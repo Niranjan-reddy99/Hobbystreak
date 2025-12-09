@@ -38,7 +38,8 @@ import {
   ChevronRightIcon,
   MoreHorizontalIcon,
   FlagIcon,
-} from "./icons"; // 👈 NOTE: icons.tsx in root
+} from "./components/Icons";
+ // 👈 NOTE: icons.tsx in root
 
 import {
   ViewState,

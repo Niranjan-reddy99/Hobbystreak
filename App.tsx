@@ -156,13 +156,18 @@ export default function App() {
       setIsLoading(true);
 
       // If env keys are wrong → use mock mode
-      if (!isKeyValid() || !isKeyFormatCorrect()) {
-        setDbError("Invalid API Key format. Using Mock Mode.");
-        setHobbies(MOCK_HOBBIES);
-        setPosts(MOCK_POSTS);
-        setIsLoading(false);
-        return;
-      }
+    if (!isKeyValid() || !isKeyFormatCorrect()) {
+   // Set error only ONCE — this prevents infinite focus loss
+   setDbError(prev =>
+     prev ? prev : "Invalid API Key format. Using Mock Mode."
+   );
+
+   setHobbies(MOCK_HOBBIES);
+   setPosts(MOCK_POSTS);
+   setIsLoading(false);
+   return;
+}
+
 
       try {
         const { data, error } = await supabase.auth.getSession();

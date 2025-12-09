@@ -8,7 +8,7 @@ import {
   StarIcon, ClockIcon, CalendarIcon, TrashIcon, LightningIcon, LoaderIcon,
   SettingsIcon, BellIcon, ShieldIcon, HelpCircleIcon, ChevronRightIcon,
   MoreHorizontalIcon, FlagIcon
-} from './components/Icons';
+} from "./Icons"
 import { ViewState, HobbyCategory, User, Hobby, Post, Conversation, DirectMessage, DailyChallenge } from './types';
 import { MOCK_HOBBIES, MOCK_POSTS, MOCK_USERS, CHALLENGE_REPOSITORY, MOCK_ACHIEVEMENTS } from './constants';
 import { createHobbyCoachChat, sendMessageStream, LiveSession } from './services/geminiService';

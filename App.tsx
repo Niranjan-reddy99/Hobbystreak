@@ -1,93 +1,209 @@
-import React, { useEffect, useRef, useState } from "react";
-import { FlameIcon, ArrowLeftIcon, CheckIcon, XIcon } from "./components/Icons";
-import { ViewState } from "./types";
-import { MOCK_USERS } from "./constants";
+import React, { useState, useEffect } from "react";
+
+import {
+  HomeIcon,
+  CompassIcon,
+  UserIcon,
+  PlusIcon,
+  HeartIcon,
+  MessageCircleIcon,
+  SparklesIcon,
+  SendIcon,
+  CheckIcon,
+  ArrowLeftIcon,
+  XIcon,
+  ImageIcon,
+  LogOutIcon,
+  GoogleIcon,
+  AppleIcon,
+  FlameIcon,
+  LoaderIcon,
+  CalendarIcon,
+  SettingsIcon,
+  BellIcon,
+  MoreHorizontalIcon,
+} from "./components/Icons";
+
+import {
+  ViewState,
+  HobbyCategory,
+  User,
+  Hobby,
+  Post,
+} from "./types";
+
+import {
+  MOCK_HOBBIES,
+  MOCK_POSTS,
+  MOCK_USERS,
+} from "./constants";
+
 import {
   supabase,
-  isKeyFormatCorrect,
   isKeyValid,
+  isKeyFormatCorrect,
+  mapSupabaseUserToAppUser,
 } from "./supabaseClient";
 
-/* ===========================
-   SIMPLE TOAST
-=========================== */
+/* ----------------------------------------
+   TOAST
+---------------------------------------- */
 const Toast = ({
-  msg,
-  type,
+  message,
+  type = "success",
 }: {
-  msg: string;
-  type: "success" | "error";
+  message: string;
+  type?: "success" | "error";
 }) => (
   <div
-    className={`fixed top-4 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg z-50 flex items-center gap-2 text-sm ${
-      type === "success"
-        ? "bg-slate-900 text-white"
-        : "bg-red-500 text-white"
-    }`}
+    className={`fixed top-4 left-1/2 translate-x-[-50%] px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2
+      ${type === "success" ? "bg-slate-900 text-white" : "bg-red-500 text-white"}
+    `}
   >
     {type === "success" ? (
       <CheckIcon className="w-4 h-4" />
     ) : (
       <XIcon className="w-4 h-4" />
     )}
-    {msg}
+    <span>{message}</span>
   </div>
 );
 
-/* ===========================
-      APP
-=========================== */
+/* ----------------------------------------
+   BUTTON
+---------------------------------------- */
+const Button = ({
+  children,
+  onClick,
+  variant = "primary",
+  className = "",
+  icon: Icon,
+  disabled,
+  isLoading,
+  type = "button",
+}: any) => {
+  const base =
+    "px-4 py-3 rounded-2xl flex items-center justify-center gap-2 transition active:scale-95";
+
+  const variants: any = {
+    primary: "bg-slate-900 text-white",
+    secondary: "border bg-white",
+  };
+
+  return (
+    <button
+      type={type}
+      disabled={disabled || isLoading}
+      onClick={onClick}
+      className={`${base} ${variants[variant]} ${className}`}
+    >
+      {isLoading ? (
+        <LoaderIcon className="animate-spin w-5 h-5" />
+      ) : (
+        Icon && <Icon className="w-5 h-5" />
+      )}
+      {children}
+    </button>
+  );
+};
+
+/* ========================================
+           APP
+======================================== */
 export default function App() {
-  const [view, setView] = useState<ViewState>(ViewState.LOGIN);
+  const [view, setView] = useState(ViewState.LOGIN);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  const [toast, setToast] = useState<{
-    msg: string;
-    type: "success" | "error";
-  } | null>(null);
+  const [hobbies, setHobbies] = useState<Hobby[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
 
+  const [toast, setToast] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [mockMode, setMockMode] = useState(false);
+  const [isDbConnected, setIsDbConnected] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
 
-  const mountedOnce = useRef(false);
-
-  /* ✅ INIT RUNS ONLY ONCE */
+  /* ----------------------------------------
+     INIT
+  ---------------------------------------- */
   useEffect(() => {
-    if (mountedOnce.current) return;
-    mountedOnce.current = true;
+    const init = async () => {
+      setIsLoading(true);
 
-    if (!isKeyValid() || !isKeyFormatCorrect()) {
-      console.warn("MOCK MODE ENABLED");
-      setMockMode(true);
-    }
+      if (!isKeyValid() || !isKeyFormatCorrect()) {
+        setDbError("Using Mock Mode");
+        setHobbies(MOCK_HOBBIES);
+        setPosts(MOCK_POSTS);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const { data } = await supabase.auth.getSession();
+
+        if (data?.session?.user) {
+          setIsDbConnected(true);
+          await loadUser(data.session.user);
+          setView(ViewState.FEED);
+        } else {
+          setIsDbConnected(true);
+        }
+
+        await loadPublicData();
+      } catch {
+        setDbError("Database unavailable. Mock Mode enabled.");
+        setHobbies(MOCK_HOBBIES);
+        setPosts(MOCK_POSTS);
+      }
+
+      setIsLoading(false);
+    };
+
+    init();
   }, []);
 
-  /* ===========================
-        TOAST
-  =========================== */
-  const showToast = (
-    msg: string,
-    type: "success" | "error" = "success"
-  ) => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 2500);
+  const showToast = (m: string, t: "success" | "error" = "success") => {
+    setToast({ message: m, type: t });
+    setTimeout(() => setToast(null), 3000);
   };
 
-  /* ===========================
-        LOGIN
-  =========================== */
-  const handleLogin = async (e: React.FormEvent) => {
+  const loadPublicData = async () => {
+    const { data } = await supabase.from("hobbies").select("*");
+    if (data) setHobbies(data as Hobby[]);
+
+    const { data: postsData } = await supabase
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (postsData) setPosts(postsData as Post[]);
+  };
+
+  const loadUser = async (sbUser: any) => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", sbUser.id)
+      .single();
+
+    const user = mapSupabaseUserToAppUser(sbUser, data);
+    setCurrentUser(user);
+  };
+
+  /* ----------------------------------------
+       AUTH
+  ---------------------------------------- */
+  const handleLogin = async (e: any) => {
     e.preventDefault();
     setIsLoading(true);
 
-    if (mockMode) {
-      setTimeout(() => {
-        setIsLoading(false);
-        showToast("Logged in (mock mode)");
-      }, 700);
+    if (!isDbConnected) {
+      setCurrentUser(MOCK_USERS.u1);
+      setView(ViewState.FEED);
+      setIsLoading(false);
       return;
     }
 
@@ -96,180 +212,166 @@ export default function App() {
         email,
         password,
       });
+
       if (error) throw error;
 
-      showToast("Login successful!");
-    } catch (e: any) {
-      showToast(e.message || "Login failed", "error");
+      showToast("Logged in!");
+      setView(ViewState.FEED);
+
+    } catch (err: any) {
+      showToast(err.message, "error");
     }
 
     setIsLoading(false);
   };
 
-  /* ===========================
-        REGISTER
-  =========================== */
-  const RegisterView = () => (
-  <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
+  const handleRegister = async (e: any) => {
+    e.preventDefault();
+    setIsLoading(true);
 
-    <button
-      onClick={() => setView(ViewState.LOGIN)}
-      className="absolute top-8 left-8 p-2 bg-white rounded-full shadow-sm"
-    >
-      <ArrowLeftIcon className="w-6 h-6 text-slate-900" />
-    </button>
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: name },
+        },
+      });
 
-    <div className="mb-8">
-      <h1 className="text-3xl font-bold text-slate-900 mb-2">
-        Create Account
-      </h1>
-      <p className="text-slate-500">Join the movement today.</p>
-    </div>
+      if (error) throw error;
 
-    <form onSubmit={handleRegister} className="space-y-4">
+      showToast("Account created!");
+      setView(ViewState.LOGIN); // ✅ BLANK PAGE FIX
 
-      {/* 👇 NO autoFocus ANYWHERE */}
-      <input
-        type="text"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        placeholder="Full Name"
-        className="w-full p-4 border rounded-xl"
-      />
+    } catch (err: any) {
+      showToast(err.message, "error");
+    }
 
-      <input
-        type="email"
-        value={email}
-        onChange={e => setEmail(e.target.value)}
-        placeholder="Email"
-        className="w-full p-4 border rounded-xl"
-      />
+    setIsLoading(false);
+  };
 
-      <input
-        type="password"
-        value={password}
-        onChange={e => setPassword(e.target.value)}
-        placeholder="Password"
-        className="w-full p-4 border rounded-xl"
-      />
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setView(ViewState.LOGIN);
+  };
 
-      <button
-        type="submit"
-        className="w-full p-4 bg-slate-900 text-white rounded-xl"
-        disabled={isLoading}
-      >
-        {isLoading ? "Creating..." : "Create Account"}
-      </button>
-
-    </form>
-
-  </div>
-);
-
-  /* ===========================
-        LOGIN VIEW
-  =========================== */
-  const Login = () => (
-    <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
-      <div className="text-center mb-8">
-        <FlameIcon className="mx-auto w-10 h-10 text-slate-900" />
-        <h1 className="text-3xl font-bold mt-2">Hobbystreak</h1>
-      </div>
+  /* ----------------------------------------
+       VIEWS
+  ---------------------------------------- */
+  const LoginView = () => (
+    <div className="p-8">
+      <h1 className="text-3xl mb-6">Login</h1>
 
       <form onSubmit={handleLogin} className="space-y-4">
         <input
-          autoFocus
-          type="email"
+          placeholder="Email"
+          className="border p-3 w-full"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          className="w-full p-4 border rounded-xl"
         />
 
         <input
+          placeholder="Password"
           type="password"
+          className="border p-3 w-full"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          className="w-full p-4 border rounded-xl"
         />
 
-        <button
-          disabled={isLoading}
-          className="w-full p-4 bg-slate-900 rounded-xl text-white"
+        <Button
+          className="w-full"
+          type="submit"
+          isLoading={isLoading}
         >
-          {isLoading ? "Loading..." : "LOGIN"}
-        </button>
+          Login
+        </Button>
       </form>
 
-      <p className="text-center mt-5 text-sm">
-        New here?{" "}
+      <p className="mt-4">
+        New user?{" "}
         <button
           onClick={() => setView(ViewState.REGISTER)}
-          className="font-bold underline"
+          className="underline"
         >
-          Create Account
+          Create account
         </button>
       </p>
     </div>
   );
 
-  /* ===========================
-        REGISTER VIEW
-  =========================== */
-  const Register = () => (
-    <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
+  const RegisterView = () => (
+    <div className="p-8">
       <button
-        className="absolute top-6 left-6"
+        className="mb-6"
         onClick={() => setView(ViewState.LOGIN)}
       >
-        <ArrowLeftIcon className="w-6 h-6" />
+        ← Back
       </button>
 
       <form onSubmit={handleRegister} className="space-y-4">
         <input
-          autoFocus
+          placeholder="Name"
+          className="border p-3 w-full"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Full name"
-          className="w-full p-4 border rounded-xl"
         />
 
         <input
+          placeholder="Email"
+          className="border p-3 w-full"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          type="email"
-          className="w-full p-4 border rounded-xl"
         />
 
         <input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
           type="password"
-          className="w-full p-4 border rounded-xl"
+          className="border p-3 w-full"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
         />
 
-        <button
-          disabled={isLoading}
-          className="w-full p-4 bg-slate-900 text-white rounded-xl"
+        <Button
+          className="w-full"
+          type="submit"
+          isLoading={isLoading}
         >
-          {isLoading ? "Creating..." : "CREATE ACCOUNT"}
-        </button>
+          Create Account
+        </Button>
       </form>
     </div>
   );
 
-  /* ===========================
+  const FeedView = () => (
+    <div className="p-8">
+      <h1 className="mb-4">Welcome {currentUser?.name}</h1>
+
+      {posts.map((post) => (
+        <div key={post.id} className="border p-3 mb-3">
+          {post.content}
+        </div>
+      ))}
+
+      <button
+        className="mt-10 underline"
+        onClick={handleLogout}
+      >
+        Logout
+      </button>
+    </div>
+  );
+
+  /* ----------------------------------------
         RENDER
-  =========================== */
+  ---------------------------------------- */
   return (
     <>
-      {toast && <Toast msg={toast.msg} type={toast.type} />}
+      {toast && <Toast message={toast.message} type={toast.type} />}
 
-      {view === ViewState.LOGIN && <Login />}
-      {view === ViewState.REGISTER && <Register />}
+      {view === ViewState.LOGIN && <LoginView />}
+      {view === ViewState.REGISTER && <RegisterView />}
+      {view === ViewState.FEED && <FeedView />}
     </>
   );
 }

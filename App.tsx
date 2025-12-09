@@ -1,3 +1,12 @@
+import React from "react";
+import { ViewState } from "./types";
+import {
+  HomeIcon,
+  CompassIcon,
+  UserIcon,
+  HeartIcon,
+} from "./Icons";
+
 export default function App() {
   const view: ViewState = "home";
 

@@ -65,21 +65,50 @@ export default function App() {
 
   if (view === "feed") {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center text-lg">
-      <p className="mb-4">✅ Logged in successfully</p>
+    <div className="min-h-screen bg-slate-50 p-6">
 
-      <button
-        onClick={async () => {
-          await supabase.auth.signOut();
-          setView("login");
-        }}
-        className="bg-slate-900 text-white px-6 py-3 rounded-xl"
-      >
-        Logout
-      </button>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Communities</h1>
+
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+            setView("login");
+          }}
+          className="bg-slate-900 text-white px-4 py-2 rounded-xl"
+        >
+          Logout
+        </button>
+      </div>
+
+      <div className="grid gap-4">
+
+        <div className="bg-white p-4 rounded-2xl border">
+          <h3 className="font-bold">🏃 Fitness</h3>
+          <p className="text-sm text-slate-500">
+            Workouts and staying active
+          </p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border">
+          <h3 className="font-bold">📚 Reading</h3>
+          <p className="text-sm text-slate-500">
+            Daily reading challenge
+          </p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border">
+          <h3 className="font-bold">🎨 Drawing</h3>
+          <p className="text-sm text-slate-500">
+            Improve creativity practice
+          </p>
+        </div>
+
+      </div>
     </div>
   );
 }
+
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center px-8">

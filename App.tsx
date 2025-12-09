@@ -34,12 +34,13 @@ import {
   LiveSession
 } from "./geminiService";
 
-import {
-  supabase,
-  isKeyValid,
-  isKeyFormatCorrect,
-  mapSupabaseUserToAppUser
+import { 
+  supabase, 
+  isKeyValid, 
+  isKeyFormatCorrect, 
+  mapSupabaseUserToAppUser 
 } from "./supabaseClient";
+
 
 
 // --- Toast Notification Component ---

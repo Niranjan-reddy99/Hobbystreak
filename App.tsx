@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   HomeIcon,
   CompassIcon,
@@ -10,17 +10,16 @@ import {
   SendIcon,
   CheckIcon,
   ArrowLeftIcon,
-  XIcon,
   ImageIcon,
   LogOutIcon,
   GoogleIcon,
   AppleIcon,
-  FlameIcon,
   CalendarIcon,
   LoaderIcon,
   SettingsIcon,
   BellIcon,
   MoreHorizontalIcon,
+  FlameIcon,
 } from "./components/Icons";
 
 import {
@@ -44,42 +43,61 @@ import {
   mapSupabaseUserToAppUser,
 } from "./supabaseClient";
 
-
-// ---------------- TOAST ----------------
+/* ------------------ Toast ------------------ */
 const Toast = ({ message, type = "success" }: any) => (
   <div
-    className={`fixed top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full z-50 shadow-lg ${
-      type === "error" ? "bg-red-500" : "bg-slate-900"
-    } text-white`}
+    className={`fixed top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 ${
+      type === "success"
+        ? "bg-slate-900 text-white"
+        : "bg-red-500 text-white"
+    }`}
   >
-    {message}
+    {type === "success" ? (
+      <CheckIcon className="w-4 h-4" />
+    ) : (
+      <span>❌</span>
+    )}
+    <span className="text-sm">{message}</span>
   </div>
 );
 
-// ---------------- BUTTON ----------------
-const Button = ({ children, onClick, isLoading, type = "button", variant = "primary" }: any) => {
-  const style =
-    variant === "secondary"
-      ? "bg-white text-black border"
-      : "bg-slate-900 text-white";
+/* ------------------ Button ------------------ */
+const Button = ({
+  children,
+  onClick,
+  type = "button",
+  variant = "primary",
+  disabled,
+  isLoading,
+}: any) => {
+  const base =
+    "px-4 py-3 rounded-2xl font-medium transition-all flex justify-center items-center gap-2";
+
+  const styles: any = {
+    primary:
+      "bg-slate-900 text-white hover:bg-slate-800 shadow",
+    secondary:
+      "bg-white border border-slate-200 hover:bg-slate-50",
+  };
 
   return (
     <button
       type={type}
       onClick={onClick}
-      disabled={isLoading}
-      className={`w-full py-3 rounded-xl flex justify-center items-center gap-2 
-        ${style}`}
+      disabled={disabled || isLoading}
+      className={`${base} ${styles[variant]} ${
+        disabled && "opacity-50"
+      }`}
     >
-      {isLoading && <LoaderIcon className="w-5 h-5 animate-spin" />}
+      {isLoading && (
+        <LoaderIcon className="w-4 h-4 animate-spin" />
+      )}
       {children}
     </button>
   );
 };
 
-// ====================================================
-// ======================= APP ========================
-// ====================================================
+/* ========================================================== */
 
 export default function App() {
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
@@ -93,59 +111,83 @@ export default function App() {
   const [posts, setPosts] = useState<Post[]>([]);
 
   const [toast, setToast] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
   const [isDbConnected, setIsDbConnected] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const showToast = (msg: string, type = "success") => {
-    setToast({ message: msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  // ======================= INITIAL LOAD =======================
+  /* ------------------ Init ------------------ */
   useEffect(() => {
     const init = async () => {
+      setLoading(true);
+
       if (!isKeyValid() || !isKeyFormatCorrect()) {
-        setDbError("Invalid Supabase keys → running mock mode.");
+        setDbError("Supabase key invalid — running in MOCK MODE");
         setHobbies(MOCK_HOBBIES);
         setPosts(MOCK_POSTS);
+        setLoading(false);
         return;
       }
 
       try {
-        const session = await supabase.auth.getSession();
+        const { data } =
+          await supabase.auth.getSession();
 
-        if (session.data.session?.user) {
+        if (data?.session?.user) {
+          await fetchUserData(data.session.user);
           setIsDbConnected(true);
-          await fetchUserData(session.data.session.user);
           setView(ViewState.FEED);
         } else {
           setIsDbConnected(true);
+          await fetchPublicData();
         }
-
-        await loadCommunities();
-        await loadPosts();
       } catch (err: any) {
-        console.warn(err);
+        console.error(err);
+        setDbError("Failed DB connection");
         setHobbies(MOCK_HOBBIES);
         setPosts(MOCK_POSTS);
       }
+
+      setLoading(false);
     };
 
     init();
 
-    supabase.auth.onAuthStateChange(async (_, session) => {
-      if (session?.user) {
-        await fetchUserData(session.user);
-        setView(ViewState.FEED);
-      } else {
-        setCurrentUser(null);
-        setView(ViewState.LOGIN);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      async (_, session) => {
+        if (session?.user)
+          await fetchUserData(session.user);
       }
-    });
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // ======================= DATA =======================
+  /* ------------------ Helpers ------------------ */
+  const showToast = (
+    msg: string,
+    type: "success" | "error" = "success"
+  ) => {
+    setToast({ message: msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchPublicData = async () => {
+    try {
+      const { data: h } =
+        await supabase.from("hobbies").select("*");
+      if (h) setHobbies(h);
+
+      const { data: p } =
+        await supabase.from("posts").select("*");
+
+      if (p) setPosts(p);
+    } catch {
+      console.warn("Public fetch failed");
+    }
+  };
+
   const fetchUserData = async (sbUser: any) => {
     const { data: profile } = await supabase
       .from("profiles")
@@ -153,240 +195,224 @@ export default function App() {
       .eq("id", sbUser.id)
       .single();
 
-    const user = mapSupabaseUserToAppUser(sbUser, profile);
+    const appUser =
+      mapSupabaseUserToAppUser(sbUser, profile);
 
-    const { data: memberships } = await supabase
-      .from("user_hobbies")
-      .select("hobby_id")
-      .eq("user_id", sbUser.id);
-
-    user.joinedHobbies = memberships?.map((m) => m.hobby_id) || [];
-
-    setCurrentUser(user);
+    setCurrentUser(appUser);
   };
 
-  const loadCommunities = async () => {
-    try {
-      const { data } = await supabase.from("hobbies").select("*");
+  /* ------------------ Auth ------------------ */
 
-      setHobbies(
-        data?.map((h: any) => ({
-          id: h.id,
-          name: h.name,
-          description: h.description,
-          category: h.category,
-          icon: h.icon || "✨",
-          memberCount: h.member_count || 0,
-          image: h.image_url,
-        })) || []
-      );
-    } catch {}
-  };
-
-  const loadPosts = async () => {
-    try {
-      const { data } = await supabase
-        .from("posts")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      setPosts(
-        data?.map((p: any) => ({
-          id: p.id,
-          hobbyId: p.hobby_id,
-          userId: p.user_id,
-          content: p.content,
-          imageUrl: p.image_url,
-          likes: p.likes_count || 0,
-          comments: [],
-          timestamp: p.created_at,
-        })) || []
-      );
-    } catch {}
-  };
-
-  // ======================= AUTH =======================
-  const handleLogin = async (e: any) => {
+  const login = async (e: any) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLoading(true);
 
-    if (!isDbConnected && dbError) {
+    if (!isDbConnected) {
       const mock = MOCK_USERS["u1"];
       setCurrentUser(mock);
       setView(ViewState.FEED);
-      setIsLoading(false);
+      showToast(`Welcome ${mock.name}`);
+      setLoading(false);
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    setIsLoading(false);
-
-    if (error) showToast(error.message, "error");
-    else showToast("Logged in successfully");
-  };
-
-  const handleRegister = async (e: any) => {
-    e.preventDefault();
-    setIsLoading(true);
-
     try {
-      const { error } = await supabase.auth.signUp({
+      await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          data: { full_name: name || email.split("@")[0] },
-        },
       });
 
-      if (error) throw error;
-
-      showToast("Account created — check your email");
-      setView(ViewState.LOGIN);
+      showToast("Logged in successfully");
     } catch (err: any) {
       showToast(err.message, "error");
-    } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleLogout = async () => {
+  const register = async (e: any) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+          },
+        },
+      });
+
+      showToast(
+        "Registered successfully — check mail"
+      );
+      setView(ViewState.LOGIN);
+    } catch (err: any) {
+      showToast(err.message, "error");
+    }
+
+    setLoading(false);
+  };
+
+  const logout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
     setView(ViewState.LOGIN);
   };
 
-  // ======================= COMMUNITY =======================
-  const joinCommunity = async (id: string) => {
-    if (!currentUser) return;
+  /* ------------------ Views ------------------ */
 
-    if (!isDbConnected) {
-      currentUser.joinedHobbies.push(id);
-      setCurrentUser({ ...currentUser });
-      return;
-    }
-
-    await supabase.from("user_hobbies").insert({
-      hobby_id: id,
-      user_id: currentUser.id,
-    });
-
-    await fetchUserData({ id: currentUser.id });
-  };
-
-  // ======================= VIEWS =======================
   const LoginView = () => (
-    <form onSubmit={handleLogin} className="p-8 max-w-md mx-auto space-y-4">
-      <h1 className="text-2xl font-bold text-center">Hobbystreak</h1>
+    <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
+      <div className="text-center mb-10">
+        <div className="w-16 h-16 mx-auto bg-slate-900 rounded-3xl mb-4 flex items-center justify-center">
+          <FlameIcon className="text-white w-8 h-8" />
+        </div>
+        <h1 className="text-3xl font-bold">
+          Hobbystreak
+        </h1>
+      </div>
 
-      <input
-        className="w-full p-3 border rounded-xl"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-      />
+      <form onSubmit={login} className="space-y-4">
+        <input
+          value={email}
+          onChange={(e) =>
+            setEmail(e.target.value)
+          }
+          type="email"
+          placeholder="Email"
+          className="w-full p-4 border rounded-2xl"
+        />
 
-      <input
-        className="w-full p-3 border rounded-xl"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password"
-      />
+        <input
+          value={password}
+          onChange={(e) =>
+            setPassword(e.target.value)
+          }
+          type="password"
+          placeholder="Password"
+          className="w-full p-4 border rounded-2xl"
+        />
 
-      <Button type="submit" isLoading={isLoading}>
-        Sign In
-      </Button>
-
-      <p className="text-center">
-        New here?{" "}
-        <span
-          className="cursor-pointer text-blue-500"
-          onClick={() => setView(ViewState.REGISTER)}
+        <Button
+          type="submit"
+          isLoading={loading}
+          className="w-full"
         >
-          Create account
-        </span>
+          Login
+        </Button>
+      </form>
+
+      <p className="text-center mt-6">
+        New user?{" "}
+        <button
+          onClick={() =>
+            setView(ViewState.REGISTER)
+          }
+          className="underline"
+        >
+          Create Account
+        </button>
       </p>
-    </form>
+    </div>
   );
 
   const RegisterView = () => (
-    <form onSubmit={handleRegister} className="p-8 max-w-md mx-auto space-y-4">
-      <h2 className="text-xl font-bold">Create Account</h2>
-
-      <input
-        className="w-full p-3 border rounded-xl"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Full name"
-      />
-
-      <input
-        className="w-full p-3 border rounded-xl"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-      />
-
-      <input
-        className="w-full p-3 border rounded-xl"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password"
-      />
-
-      <Button type="submit" isLoading={isLoading}>
-        Create Account
-      </Button>
-
-      <button type="button" onClick={() => setView(ViewState.LOGIN)}>
-        Back to Login
+    <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
+      <button
+        className="absolute top-6 left-6"
+        onClick={() =>
+          setView(ViewState.LOGIN)
+        }
+      >
+        <ArrowLeftIcon />
       </button>
-    </form>
+
+      <form
+        onSubmit={register}
+        className="space-y-4"
+      >
+        <input
+          value={name}
+          onChange={(e) =>
+            setName(e.target.value)
+          }
+          type="text"
+          placeholder="Full name"
+          className="w-full p-4 border rounded-2xl"
+        />
+
+        <input
+          value={email}
+          onChange={(e) =>
+            setEmail(e.target.value)
+          }
+          type="email"
+          placeholder="Email"
+          className="w-full p-4 border rounded-2xl"
+        />
+
+        <input
+          value={password}
+          onChange={(e) =>
+            setPassword(e.target.value)
+          }
+          type="password"
+          placeholder="Password"
+          className="w-full p-4 border rounded-2xl"
+        />
+
+        <Button
+          type="submit"
+          isLoading={loading}
+          className="w-full"
+        >
+          Create Account
+        </Button>
+      </form>
+    </div>
   );
 
-  const ExploreView = () => (
-    <div className="p-6 space-y-4">
-      <h1 className="text-xl font-bold">Communities</h1>
+  const FeedView = () => (
+    <div className="p-8 min-h-screen bg-slate-50">
+      <div className="flex justify-between mb-6">
+        <h1 className="font-bold text-xl">
+          Welcome {currentUser?.name}
+        </h1>
 
-      {hobbies.map((h) => (
+        <button onClick={logout}>
+          <LogOutIcon />
+        </button>
+      </div>
+
+      {posts.map((p) => (
         <div
-          key={h.id}
-          className="p-4 border rounded-xl flex justify-between"
+          key={p.id}
+          className="p-4 bg-white mb-4 rounded-2xl border"
         >
-          <div>
-            <b>
-              {h.icon} {h.name}
-            </b>
-            <p className="text-sm">{h.description}</p>
-          </div>
-
-          <Button variant="secondary" onClick={() => joinCommunity(h.id)}>
-            {currentUser?.joinedHobbies.includes(h.id) ? "Joined" : "Join"}
-          </Button>
+          {p.content}
         </div>
       ))}
     </div>
   );
 
-  // ======================= MAIN =======================
+  /* ------------------ Render ------------------ */
+
   return (
     <>
-      {toast && <Toast {...toast} />}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+        />
+      )}
 
       {view === ViewState.LOGIN && <LoginView />}
-      {view === ViewState.REGISTER && <RegisterView />}
-      {view === ViewState.EXPLORE && <ExploreView />}
-
-      {view !== ViewState.LOGIN && view !== ViewState.REGISTER && (
-        <div className="fixed bottom-4 w-full flex justify-center gap-6">
-          <HomeIcon onClick={() => setView(ViewState.FEED)} />
-          <CompassIcon onClick={() => setView(ViewState.EXPLORE)} />
-          <UserIcon onClick={() => setView(ViewState.PROFILE)} />
-          <LogOutIcon onClick={handleLogout} />
-        </div>
+      {view === ViewState.REGISTER && (
+        <RegisterView />
       )}
+      {view === ViewState.FEED && <FeedView />}
     </>
   );
 }

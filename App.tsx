@@ -80,13 +80,11 @@ export default function App() {
 
   /* ================= UI =================== */
 
-  if(view === ViewState.FEED){
-    return (
-      <div className="min-h-screen flex items-center justify-center text-2xl">
-        ✅ Logged in successfully
-      </div>
-    );
-  }
+  {view === ViewState.FEED && <FeedView />}
+{view === ViewState.EXPLORE && <ExploreView />}
+{view === ViewState.PROFILE && <ProfileView />}
+{view === ViewState.SCHEDULE && <ScheduleView />}
+
 
   /* ============= LOGIN VIEW ================= */
 

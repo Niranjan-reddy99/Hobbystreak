@@ -1,0 +1,7 @@
+{
+  "name": "streak",
+  "description": "A social productivity app to track hobbies, join communities, and get AI coaching.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

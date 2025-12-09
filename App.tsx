@@ -97,113 +97,7 @@ const Button = ({
   );
 };
 
-/* ========================================================== */
-
-export default function App() {
-  const [view, setView] = useState<ViewState>(ViewState.LOGIN);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-
-  const [hobbies, setHobbies] = useState<Hobby[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
-
-  const [toast, setToast] = useState<any>(null);
-  const [isDbConnected, setIsDbConnected] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  /* ------------------ Init ------------------ */
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-
-      if (!isKeyValid() || !isKeyFormatCorrect()) {
-        setDbError("Supabase key invalid — running in MOCK MODE");
-        setHobbies(MOCK_HOBBIES);
-        setPosts(MOCK_POSTS);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data } =
-          await supabase.auth.getSession();
-
-        if (data?.session?.user) {
-          await fetchUserData(data.session.user);
-          setIsDbConnected(true);
-          setView(ViewState.FEED);
-        } else {
-          setIsDbConnected(true);
-          await fetchPublicData();
-        }
-      } catch (err: any) {
-        console.error(err);
-        setDbError("Failed DB connection");
-        setHobbies(MOCK_HOBBIES);
-        setPosts(MOCK_POSTS);
-      }
-
-      setLoading(false);
-    };
-
-    init();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      async (_, session) => {
-        if (session?.user)
-          await fetchUserData(session.user);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  /* ------------------ Helpers ------------------ */
-  const showToast = (
-    msg: string,
-    type: "success" | "error" = "success"
-  ) => {
-    setToast({ message: msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const fetchPublicData = async () => {
-    try {
-      const { data: h } =
-        await supabase.from("hobbies").select("*");
-      if (h) setHobbies(h);
-
-      const { data: p } =
-        await supabase.from("posts").select("*");
-
-      if (p) setPosts(p);
-    } catch {
-      console.warn("Public fetch failed");
-    }
-  };
-
-  const fetchUserData = async (sbUser: any) => {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", sbUser.id)
-      .single();
-
-    const appUser =
-      mapSupabaseUserToAppUser(sbUser, profile);
-
-    setCurrentUser(appUser);
-  };
-
-  /* ------------------ Auth ------------------ */
-
-  const login = async (e: any) => {
+const login = async (e: any) => {
     e.preventDefault();
     setLoading(true);
 
@@ -397,6 +291,114 @@ export default function App() {
     </div>
   );
 
+/* ========================================================== */
+
+export default function App() {
+  const [view, setView] = useState<ViewState>(ViewState.LOGIN);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+
+  const [hobbies, setHobbies] = useState<Hobby[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+
+  const [toast, setToast] = useState<any>(null);
+  const [isDbConnected, setIsDbConnected] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  /* ------------------ Init ------------------ */
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+
+      if (!isKeyValid() || !isKeyFormatCorrect()) {
+        setDbError("Supabase key invalid — running in MOCK MODE");
+        setHobbies(MOCK_HOBBIES);
+        setPosts(MOCK_POSTS);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data } =
+          await supabase.auth.getSession();
+
+        if (data?.session?.user) {
+          await fetchUserData(data.session.user);
+          setIsDbConnected(true);
+          setView(ViewState.FEED);
+        } else {
+          setIsDbConnected(true);
+          await fetchPublicData();
+        }
+      } catch (err: any) {
+        console.error(err);
+        setDbError("Failed DB connection");
+        setHobbies(MOCK_HOBBIES);
+        setPosts(MOCK_POSTS);
+      }
+
+      setLoading(false);
+    };
+
+    init();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      async (_, session) => {
+        if (session?.user)
+          await fetchUserData(session.user);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  /* ------------------ Helpers ------------------ */
+  const showToast = (
+    msg: string,
+    type: "success" | "error" = "success"
+  ) => {
+    setToast({ message: msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchPublicData = async () => {
+    try {
+      const { data: h } =
+        await supabase.from("hobbies").select("*");
+      if (h) setHobbies(h);
+
+      const { data: p } =
+        await supabase.from("posts").select("*");
+
+      if (p) setPosts(p);
+    } catch {
+      console.warn("Public fetch failed");
+    }
+  };
+
+  const fetchUserData = async (sbUser: any) => {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", sbUser.id)
+      .single();
+
+    const appUser =
+      mapSupabaseUserToAppUser(sbUser, profile);
+
+    setCurrentUser(appUser);
+  };
+
+  /* ------------------ Auth ------------------ */
+
+  
+
   /* ------------------ Render ------------------ */
 
   return (
@@ -408,11 +410,40 @@ export default function App() {
         />
       )}
 
-      {view === ViewState.LOGIN && <LoginView />}
-      {view === ViewState.REGISTER && (
-        <RegisterView />
-      )}
-      {view === ViewState.FEED && <FeedView />}
+{view === ViewState.LOGIN && (
+  <LoginView
+    email={email}
+    password={password}
+    setEmail={setEmail}
+    setPassword={setPassword}
+    login={login}
+    loading={loading}
+    setView={setView}
+  />
+)}
+
+{view === ViewState.REGISTER && (
+  <RegisterView
+    name={name}
+    email={email}
+    password={password}
+    setName={setName}
+    setEmail={setEmail}
+    setPassword={setPassword}
+    register={register}
+    loading={loading}
+    setView={setView}
+  />
+)}
+
+{view === ViewState.FEED && (
+  <FeedView
+    posts={posts}
+    currentUser={currentUser}
+    logout={logout}
+  />
+)}
+
     </>
   );
 }

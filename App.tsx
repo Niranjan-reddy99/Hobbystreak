@@ -28,11 +28,7 @@ import {
   MOCK_ACHIEVEMENTS
 } from "./constants";
 
-import {
-  createHobbyCoachChat,
-  sendMessageStream,
-  LiveSession
-} from "./geminiService";
+
 
 import { supabase, isKeyValid, isKeyFormatCorrect, mapSupabaseUserToAppUser } 
 from './supabaseClient';

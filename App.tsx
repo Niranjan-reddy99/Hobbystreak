@@ -64,12 +64,22 @@ export default function App() {
   // ---------------- UI ----------------
 
   if (view === "feed") {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-xl">
-        ✅ Logged in successfully
-      </div>
-    );
-  }
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center text-lg">
+      <p className="mb-4">✅ Logged in successfully</p>
+
+      <button
+        onClick={async () => {
+          await supabase.auth.signOut();
+          setView("login");
+        }}
+        className="bg-slate-900 text-white px-6 py-3 rounded-xl"
+      >
+        Logout
+      </button>
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center px-8">

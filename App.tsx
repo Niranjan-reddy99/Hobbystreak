@@ -42,7 +42,8 @@ import {
   isKeyValid,
   isKeyFormatCorrect,
   mapSupabaseUserToAppUser,
-} from "./services/supabaseClient";
+} from "./supabaseClient";
+
 
 // ---------------- TOAST ----------------
 const Toast = ({ message, type = "success" }: any) => (

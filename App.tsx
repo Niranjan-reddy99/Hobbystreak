@@ -12,7 +12,8 @@ import {
 import { ViewState, HobbyCategory, User, Hobby, Post, Conversation, DirectMessage, DailyChallenge } from './types';
 import { MOCK_HOBBIES, MOCK_POSTS, MOCK_USERS, CHALLENGE_REPOSITORY, MOCK_ACHIEVEMENTS } from './constants';
 import { createHobbyCoachChat, sendMessageStream, LiveSession } from './services/geminiService';
-import { supabase, isKeyValid, isKeyFormatCorrect, mapSupabaseUserToAppUser } from './services/supabaseClient';
+import { supabase, mapSupabaseUserToAppUser, isKeyValid, isKeyFormatCorrect } from "./supabaseClient";
+
 
 // --- Toast Notification Component ---
 const Toast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error', onClose: () => void }) => (

@@ -109,55 +109,62 @@ export default function App() {
   /* ===========================
         REGISTER
   =========================== */
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const RegisterView = () => (
+  <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
 
-    if (!email || !password || !name) {
-      showToast("All fields required", "error");
-      setIsLoading(false);
-      return;
-    }
+    <button
+      onClick={() => setView(ViewState.LOGIN)}
+      className="absolute top-8 left-8 p-2 bg-white rounded-full shadow-sm"
+    >
+      <ArrowLeftIcon className="w-6 h-6 text-slate-900" />
+    </button>
 
-    if (mockMode) {
-      setTimeout(() => {
-        MOCK_USERS["u_test"] = {
-          id: "u_test",
-          name,
-          email,
-          joinedHobbies: [],
-          stats: { streak: 0, totalPoints: 0 },
-          hobbyStreaks: {},
-          bio: "",
-          avatar: "",
-        };
+    <div className="mb-8">
+      <h1 className="text-3xl font-bold text-slate-900 mb-2">
+        Create Account
+      </h1>
+      <p className="text-slate-500">Join the movement today.</p>
+    </div>
 
-        setIsLoading(false);
-        showToast("Account created (mock)");
-        setView(ViewState.LOGIN);
-      }, 800);
-      return;
-    }
+    <form onSubmit={handleRegister} className="space-y-4">
 
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: name },
-        },
-      });
+      {/* 👇 NO autoFocus ANYWHERE */}
+      <input
+        type="text"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Full Name"
+        className="w-full p-4 border rounded-xl"
+      />
 
-      if (error) throw error;
+      <input
+        type="email"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+        placeholder="Email"
+        className="w-full p-4 border rounded-xl"
+      />
 
-      showToast("Check your email for verification");
-      setView(ViewState.LOGIN);
-    } catch (e: any) {
-      showToast(e.message || "Signup failed", "error");
-    }
+      <input
+        type="password"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        placeholder="Password"
+        className="w-full p-4 border rounded-xl"
+      />
 
-    setIsLoading(false);
-  };
+      <button
+        type="submit"
+        className="w-full p-4 bg-slate-900 text-white rounded-xl"
+        disabled={isLoading}
+      >
+        {isLoading ? "Creating..." : "Create Account"}
+      </button>
+
+    </form>
+
+  </div>
+);
 
   /* ===========================
         LOGIN VIEW

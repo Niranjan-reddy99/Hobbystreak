@@ -1,14 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  HomeIcon, CompassIcon, UserIcon, PlusIcon, HeartIcon, MessageCircleIcon, 
-  SparklesIcon, SendIcon, CheckIcon, ArrowLeftIcon, MicIcon, PhoneIcon, XIcon,
-  WaveformIcon, ImageIcon, LogOutIcon, GoogleIcon, AppleIcon, LockIcon, 
-  GlobeIcon, SearchIcon, UsersIcon, TrophyIcon, FlameIcon, AwardIcon, 
-  StarIcon, ClockIcon, CalendarIcon, TrashIcon, LightningIcon, LoaderIcon,
-  SettingsIcon, BellIcon, ShieldIcon, HelpCircleIcon, ChevronRightIcon,
-  MoreHorizontalIcon, FlagIcon
-} from "./Icons"
+import { HomeIcon, CompassIcon, UserIcon, PlusIcon, HeartIcon, MessageCircleIcon, SparklesIcon, SendIcon, CheckIcon, ArrowLeftIcon, MicIcon, XIcon, WaveformIcon, PhoneIcon, ImageIcon, LogOutIcon, GoogleIcon } from "./Icons";
+
 import { ViewState, HobbyCategory, User, Hobby, Post, Conversation, DirectMessage, DailyChallenge } from './types';
 import { MOCK_HOBBIES, MOCK_POSTS, MOCK_USERS, CHALLENGE_REPOSITORY, MOCK_ACHIEVEMENTS } from './constants';
 import { createHobbyCoachChat, sendMessageStream, LiveSession } from './services/geminiService';

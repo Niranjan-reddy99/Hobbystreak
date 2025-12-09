@@ -64,50 +64,97 @@ export default function App() {
   // ---------------- UI ----------------
 
   if (view === "feed") {
+
+  const [showModal, setShowModal] = useState(false);
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+
+  const createCommunity = async () => {
+    if (!name || !desc) return alert("Fill all fields");
+
+    const { error } = await supabase.from("hobbies").insert({
+      name,
+      description: desc,
+      category: "GENERAL",
+      icon: "✨",
+    });
+
+    if (error) return alert(error.message);
+
+    alert("Community created!");
+    setShowModal(false);
+    setName("");
+    setDesc("");
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-6">
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Communities</h1>
 
-        <button
-          onClick={async () => {
-            await supabase.auth.signOut();
-            setView("login");
-          }}
-          className="bg-slate-900 text-white px-4 py-2 rounded-xl"
-        >
-          Logout
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-xl"
+          >
+            Create
+          </button>
+
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              setView("login");
+            }}
+            className="bg-slate-900 text-white px-4 py-2 rounded-xl"
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-4">
-
-        <div className="bg-white p-4 rounded-2xl border">
-          <h3 className="font-bold">🏃 Fitness</h3>
-          <p className="text-sm text-slate-500">
-            Workouts and staying active
-          </p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border">
-          <h3 className="font-bold">📚 Reading</h3>
-          <p className="text-sm text-slate-500">
-            Daily reading challenge
-          </p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border">
-          <h3 className="font-bold">🎨 Drawing</h3>
-          <p className="text-sm text-slate-500">
-            Improve creativity practice
-          </p>
-        </div>
-
+      <div className="text-sm text-slate-500">
+        Create communities → they will save directly into Supabase.
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm space-y-3">
+            <input
+              className="w-full p-3 border rounded-lg"
+              placeholder="Community Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+
+            <textarea
+              className="w-full p-3 border rounded-lg"
+              placeholder="Description"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
+
+            <button
+              onClick={createCommunity}
+              className="w-full bg-indigo-600 text-white py-2 rounded-lg"
+            >
+              Create Community
+            </button>
+
+            <button
+              onClick={() => setShowModal(false)}
+              className="w-full border py-2 rounded-lg"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+
 
 
   return (

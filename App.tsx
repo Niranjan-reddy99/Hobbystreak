@@ -1,3 +1,6 @@
+const emailInputRef = useRef<HTMLInputElement>(null);
+const passwordInputRef = useRef<HTMLInputElement>(null);
+
 import React, { useState, useEffect } from "react";
 import {
   HomeIcon,
@@ -768,25 +771,35 @@ export default function App() {
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
             Email
           </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"
-          />
+        <input
+  ref={emailInputRef}
+  type="email"
+  value={email}
+  onChange={(e) => {
+    setEmail(e.target.value);
+    setTimeout(() => emailInputRef.current?.focus(), 0);
+  }}
+  placeholder="you@example.com"
+  className="w-full p-4 bg-white border border-slate-200 rounded-2xl"
+/>
+
         </div>
         <div className="space-y-2">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
             Password
           </label>
           <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Min 6 characters"
-            className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"
-          />
+  ref={passwordInputRef}
+  type="password"
+  value={password}
+  onChange={(e) => {
+    setPassword(e.target.value);
+    setTimeout(() => passwordInputRef.current?.focus(), 0);
+  }}
+  placeholder="••••••••"
+  className="w-full p-4 bg-white border border-slate-200 rounded-2xl"
+/>
+
         </div>
         <Button
           type="submit"

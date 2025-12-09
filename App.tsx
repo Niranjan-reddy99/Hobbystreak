@@ -2,16 +2,31 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
 import { FlameIcon } from "./components/Icons";
 
+/**
+ ✅ FULL SAFE STABLE APP.TSX
+ ✅ NO CONDITIONAL HOOKS
+ ✅ NO CURSOR BUG
+ ✅ NO BLANK PAGES
+*/
+
 export default function App() {
   const didInit = useRef(false);
 
+  // -------- GLOBAL STATE --------
   const [view, setView] = useState<"login" | "register" | "feed">("login");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+
   const [loading, setLoading] = useState(false);
 
-  // ✅ Run only once (prevents cursor bug)
+  // Community state
+  const [showModal, setShowModal] = useState(false);
+  const [communityName, setCommunityName] = useState("");
+  const [communityDesc, setCommunityDesc] = useState("");
+
+  // -------- INIT SESSION --------
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
@@ -23,8 +38,7 @@ export default function App() {
     });
   }, []);
 
-  // ---------------- AUTH ----------------
-
+  // -------- AUTH --------
   const login = async (e: any) => {
     e.preventDefault();
     setLoading(true);
@@ -57,108 +71,112 @@ export default function App() {
 
     if (error) return alert(error.message);
 
-    alert("Check your email to confirm signup!");
+    alert("✅ Confirmation email sent.\nClick it then sign in.");
     setView("login");
   };
 
-  // ---------------- UI ----------------
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setView("login");
+  };
 
-  if (view === "feed") {
-
-  const [showModal, setShowModal] = useState(false);
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-
+  // -------- CREATE COMMUNITY --------
   const createCommunity = async () => {
-    if (!name || !desc) return alert("Fill all fields");
+    if (!communityName || !communityDesc) {
+      alert("Fill both fields");
+      return;
+    }
 
     const { error } = await supabase.from("hobbies").insert({
-      name,
-      description: desc,
+      name: communityName,
+      description: communityDesc,
       category: "GENERAL",
       icon: "✨",
     });
 
     if (error) return alert(error.message);
 
-    alert("Community created!");
+    alert("✅ Community created successfully!");
+
+    setCommunityName("");
+    setCommunityDesc("");
     setShowModal(false);
-    setName("");
-    setDesc("");
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 p-6">
+  // =================================
+  // ============ PAGES ===============
+  // =================================
 
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Communities</h1>
+  // -------- FEED --------
+  if (view === "feed") {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-xl"
-          >
-            Create
-          </button>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">Communities</h1>
 
-          <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              setView("login");
-            }}
-            className="bg-slate-900 text-white px-4 py-2 rounded-xl"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-
-      <div className="text-sm text-slate-500">
-        Create communities → they will save directly into Supabase.
-      </div>
-
-      {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm space-y-3">
-            <input
-              className="w-full p-3 border rounded-lg"
-              placeholder="Community Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-
-            <textarea
-              className="w-full p-3 border rounded-lg"
-              placeholder="Description"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-            />
-
+          <div className="flex gap-3">
             <button
-              onClick={createCommunity}
-              className="w-full bg-indigo-600 text-white py-2 rounded-lg"
+              onClick={() => setShowModal(true)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-xl"
             >
-              Create Community
+              Create
             </button>
 
             <button
-              onClick={() => setShowModal(false)}
-              className="w-full border py-2 rounded-lg"
+              onClick={logout}
+              className="bg-slate-900 text-white px-4 py-2 rounded-xl"
             >
-              Cancel
+              Logout
             </button>
           </div>
         </div>
-      )}
 
-    </div>
-  );
-}
+        <p className="text-sm text-slate-500">
+          Click CREATE to add a community (saved to Supabase).
+        </p>
 
+        {/* ---------- MODAL ---------- */}
+        {showModal && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
+            <div className="bg-white p-6 rounded-xl w-full max-w-sm space-y-4">
+              <input
+                className="w-full border p-3 rounded"
+                placeholder="Community Name"
+                value={communityName}
+                onChange={(e) => setCommunityName(e.target.value)}
+              />
 
+              <textarea
+                className="w-full border p-3 rounded"
+                placeholder="Description"
+                value={communityDesc}
+                onChange={(e) => setCommunityDesc(e.target.value)}
+              />
 
+              <button
+                onClick={createCommunity}
+                className="w-full bg-indigo-600 text-white py-2 rounded"
+              >
+                Create Community
+              </button>
+
+              <button
+                onClick={() => setShowModal(false)}
+                className="w-full border py-2 rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // -------- LOGIN & REGISTER --------
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center px-8">
+    <div className="min-h-screen flex flex-col justify-center bg-slate-50 px-8">
 
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-900 rounded-3xl mb-4">
@@ -167,7 +185,7 @@ export default function App() {
         <h1 className="text-3xl font-bold">Hobbystreak</h1>
       </div>
 
-      {view === "login" && (
+      {view === "login" ? (
         <form onSubmit={login} className="space-y-4">
           <input
             className="w-full p-4 border rounded-xl"
@@ -184,10 +202,7 @@ export default function App() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          <button
-            disabled={loading}
-            className="w-full bg-slate-900 text-white py-3 rounded-xl"
-          >
+          <button className="w-full bg-slate-900 text-white p-3 rounded-xl">
             {loading ? "Loading..." : "Sign In"}
           </button>
 
@@ -202,13 +217,11 @@ export default function App() {
             </button>
           </p>
         </form>
-      )}
-
-      {view === "register" && (
+      ) : (
         <form onSubmit={register} className="space-y-4">
           <input
             className="w-full p-4 border rounded-xl"
-            placeholder="Full name"
+            placeholder="Full Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -228,10 +241,7 @@ export default function App() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          <button
-            disabled={loading}
-            className="w-full bg-slate-900 text-white py-3 rounded-xl"
-          >
+          <button className="w-full bg-slate-900 text-white p-3 rounded-xl">
             {loading ? "Creating..." : "Create Account"}
           </button>
 
@@ -242,7 +252,7 @@ export default function App() {
               onClick={() => setView("login")}
               className="font-bold"
             >
-              Sign in
+              Sign In
             </button>
           </p>
         </form>

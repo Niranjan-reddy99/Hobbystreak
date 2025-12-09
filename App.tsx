@@ -34,12 +34,9 @@ import {
   LiveSession
 } from "./geminiService";
 
-import { 
-  supabase, 
-  isKeyValid, 
-  isKeyFormatCorrect, 
-  mapSupabaseUserToAppUser 
-} from "./supabaseClient";
+import { supabase, isKeyValid, isKeyFormatCorrect, mapSupabaseUserToAppUser } 
+from './supabaseClient';
+
 
 
 

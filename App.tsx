@@ -201,15 +201,21 @@ export default function App() {
       setPosts(MOCK_POSTS);
     }
 
-    // 3. Try to load tasks
+    // 3. Try to load hobbies (New!)
+    const savedHobbies = localStorage.getItem('hobbystreak_hobbies');
+    if (savedHobbies) {
+        setHobbies(JSON.parse(savedHobbies));
+    } else {
+        setHobbies(MOCK_HOBBIES);
+    }
+
+    // 4. Try to load tasks
     const savedTasks = localStorage.getItem('hobbystreak_tasks');
     if (savedTasks) {
        setTasks(JSON.parse(savedTasks));
     } else {
        setTasks(INITIAL_TASKS);
     }
-
-    setHobbies(MOCK_HOBBIES);
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -239,6 +245,40 @@ export default function App() {
       setView(ViewState.LOGIN);
   };
 
+  const handleCreateHobby = (name: string, description: string, category: HobbyCategory) => {
+    setIsLoading(true);
+    const newHobby: Hobby = {
+        id: `h${Date.now()}`,
+        name,
+        description,
+        category,
+        memberCount: 1,
+        icon: '🌟', // Default icon for now
+        image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=600&q=80'
+    };
+
+    const updatedHobbies = [...hobbies, newHobby];
+    setHobbies(updatedHobbies);
+    localStorage.setItem('hobbystreak_hobbies', JSON.stringify(updatedHobbies));
+
+    // Auto-join the creator
+    const updatedUser = currentUser ? {
+        ...currentUser,
+        joinedHobbies: [...currentUser.joinedHobbies, newHobby.id]
+    } : null;
+
+    if (updatedUser) {
+        setCurrentUser(updatedUser);
+        localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
+    }
+
+    setTimeout(() => {
+        setIsLoading(false);
+        setView(ViewState.EXPLORE);
+        showToast("Community Created!");
+    }, 500);
+  };
+
   const handleJoinCommunity = (e: React.MouseEvent, hobbyId: string) => {
     e.stopPropagation();
     if (currentUser?.joinedHobbies.includes(hobbyId)) return showToast("Already joined!");
@@ -253,7 +293,10 @@ export default function App() {
         localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
     }
     
-    setHobbies(prev => prev.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h));
+    const updatedHobbies = hobbies.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h);
+    setHobbies(updatedHobbies);
+    localStorage.setItem('hobbystreak_hobbies', JSON.stringify(updatedHobbies));
+    
     showToast("Joined Community!");
   };
 
@@ -452,7 +495,10 @@ export default function App() {
 
             {view === ViewState.EXPLORE && (
                 <div className="px-6 pt-4">
-                    <h1 className="text-xl font-bold mb-4">Explore</h1>
+                    <div className="flex justify-between items-center mb-4">
+                        <h1 className="text-xl font-bold">Explore</h1>
+                        <button onClick={() => setView(ViewState.CREATE_HOBBY)} className="bg-slate-900 text-white p-2 rounded-full shadow-md"><Plus className="w-5 h-5" /></button>
+                    </div>
                     
                     {/* Category Filter Chips */}
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 pb-2">
@@ -486,6 +532,41 @@ export default function App() {
                                 </Button>
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {view === ViewState.CREATE_HOBBY && (
+                <div className="h-full bg-white p-6 pt-12">
+                     <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold">New Community</h2>
+                        <button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Community Name</label>
+                            <input id="hobby-name" className="w-full p-4 bg-slate-50 rounded-2xl mt-1 outline-none" placeholder="e.g., Night Owls" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Description</label>
+                            <textarea id="hobby-desc" className="w-full p-4 h-32 bg-slate-50 rounded-2xl mt-1 resize-none outline-none" placeholder="What is this community about?" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Category</label>
+                            <select id="hobby-cat" className="w-full p-4 bg-slate-50 rounded-2xl mt-1 outline-none">
+                                {Object.values(HobbyCategory).filter(c => c !== 'All').map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <Button className="w-full mt-4" onClick={() => {
+                            const name = (document.getElementById('hobby-name') as HTMLInputElement).value;
+                            const desc = (document.getElementById('hobby-desc') as HTMLTextAreaElement).value;
+                            const cat = (document.getElementById('hobby-cat') as HTMLSelectElement).value as HobbyCategory;
+                            
+                            if(name && desc) handleCreateHobby(name, desc, cat);
+                            else showToast("Please fill all fields", "error");
+                        }}>Create Community</Button>
                     </div>
                 </div>
             )}
@@ -709,7 +790,7 @@ export default function App() {
         </div>
 
         {/* BOTTOM NAVIGATION */}
-        {![ViewState.LOGIN, ViewState.REGISTER, ViewState.ONBOARDING, ViewState.COMMUNITY_DETAILS].includes(view) && (
+        {![ViewState.LOGIN, ViewState.REGISTER, ViewState.ONBOARDING, ViewState.COMMUNITY_DETAILS, ViewState.CREATE_HOBBY].includes(view) && (
             <div className="absolute bottom-6 left-6 right-6">
                 <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
                     <button onClick={() => setView(ViewState.FEED)} className={view === ViewState.FEED ? 'text-slate-900' : 'text-slate-300'}><Home className="w-6 h-6" /></button>

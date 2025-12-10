@@ -50,6 +50,8 @@ export default function App() {
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
+  const [postText, setPostText] = useState("");
+
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [loading, setLoading] = useState(false);

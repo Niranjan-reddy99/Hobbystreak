@@ -1,66 +1,100 @@
-import { useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
+import React, { useState, useEffect } from "react";
+import {
+  HomeIcon,
+  CompassIcon,
+  UserIcon,
+  PlusIcon,
+  HeartIcon,
+  MessageCircleIcon,
+  SparklesIcon,
+  SendIcon,
+  CheckIcon,
+  ArrowLeftIcon,
+  XIcon,
+  ImageIcon,
+  LogOutIcon,
+  GoogleIcon,
+  AppleIcon,
+  CalendarIcon,
+  LoaderIcon,
+  SettingsIcon,
+  BellIcon,
+  MoreHorizontalIcon,
+  FlagIcon,
+} from "./components/Icons";
 
-/* ------------------------------------------------ */
+import { ViewState, HobbyCategory, User, Hobby, Post } from "./types";
+import { supabase, isKeyValid, isKeyFormatCorrect, mapSupabaseUserToAppUser } from "./services/supabaseClient";
 
-type Hobby = {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-};
+/* ------------ Toast ------------ */
+const Toast = ({ message, type = "success" }: { message: string; type?: "success" | "error" }) => (
+  <div
+    className={`fixed top-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex gap-2 text-sm ${
+      type === "success" ? "bg-slate-900 text-white" : "bg-red-500 text-white"
+    }`}
+  >
+    {type === "success" ? <CheckIcon /> : <XIcon />}
+    {message}
+  </div>
+);
 
-/* ------------------------------------------------ */
+/* ------------ App ------------ */
 
 export default function App() {
-  const [user, setUser] = useState<any>(null);
+  const [view, setView] = useState<ViewState>(ViewState.LOGIN);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /* ------------------------------------------------ */
-  /* AUTH LISTENER */
-  /* ------------------------------------------------ */
-
+  /* ==============================
+      INIT SESSION
+  =============================== */
   useEffect(() => {
+    if (!isKeyValid() || !isKeyFormatCorrect()) {
+      alert("SUPABASE ENV KEYS INVALID");
+      return;
+    }
+
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
+      if (data.session?.user) {
+        fetchUserData(data.session.user);
+        setView(ViewState.FEED);
+      }
     });
 
-    const { data: auth } = supabase.auth.onAuthStateChange(
-      (_ev, session) => {
-        setUser(session?.user ?? null);
+    const { data } = supabase.auth.onAuthStateChange(async (_, session) => {
+      if (session?.user) {
+        await fetchUserData(session.user);
+        setView(ViewState.FEED);
+      } else {
+        setCurrentUser(null);
+        setView(ViewState.LOGIN);
       }
-    );
+    });
 
-    return () => auth.subscription.unsubscribe();
+    return () => data.subscription.unsubscribe();
   }, []);
 
-  /* ------------------------------------------------ */
-  /* FETCH COMMUNITIES */
-  /* ------------------------------------------------ */
-
-  useEffect(() => {
-    if (!user) return;
-
-    fetchPublicHobbies();
-  }, [user]);
-  // ------------------------------------------------
-// ✅ FETCH COMMUNITIES FROM SUPABASE
-// ------------------------------------------------
-useEffect(() => {
-  if (!user) return;
-
-  const loadHobbies = async () => {
-    const { data, error } = await supabase
+  /* ==============================
+      PUBLIC FETCH
+  =============================== */
+  const fetchPublicData = async () => {
+    const { data: hobbiesData } = await supabase
       .from("hobbies")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
+    if (hobbiesData) {
       setHobbies(
-        data.map((h: any) => ({
+        hobbiesData.map((h: any) => ({
           id: h.id,
           name: h.name,
           description: h.description,
@@ -70,196 +104,237 @@ useEffect(() => {
           icon: h.icon || "✨",
         }))
       );
-    } else {
-      console.error("Failed to load hobbies:", error);
+    }
+
+    const { data: postsData } = await supabase
+      .from("posts")
+      .select(`*, profiles:user_id(full_name, avatar_url)`)
+      .order("created_at", { ascending: false });
+
+    if (postsData) {
+      setPosts(
+        postsData.map((p: any) => ({
+          id: p.id,
+          userId: p.user_id,
+          hobbyId: p.hobby_id,
+          content: p.content,
+          imageUrl: null,
+          likes: p.likes_count || 0,
+          comments: [],
+          timestamp: p.created_at,
+          authorName: p.profiles?.full_name || "User",
+          authorAvatar: p.profiles?.avatar_url || "",
+        }))
+      );
     }
   };
 
-  loadHobbies();
-}, [user]);
+  /* ==============================
+      USER DATA
+  =============================== */
 
+  const fetchUserData = async (supabaseUser: any) => {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", supabaseUser.id)
+      .single();
 
-  const fetchPublicHobbies = async () => {
-    const { data, error } = await supabase
-  .from("hobbies")
-  .select("*");     // ✅ DO NOT ORDER BY created_at
+    const user = mapSupabaseUserToAppUser(supabaseUser, profile);
 
+    const { data: joins } = await supabase
+      .from("user_hobbies")
+      .select("hobby_id, streak")
+      .eq("user_id", user.id);
 
-    if (error) {
-      console.error("Fetch error:", error.message);
-      return;
+    if (joins) {
+      user.joinedHobbies = joins.map((j) => j.hobby_id);
+      joins.forEach((j) => (user.hobbyStreaks[j.hobby_id] = j.streak));
     }
 
-    if (data) {
-      setHobbies(data);
-    }
+    setCurrentUser(user);
+    await fetchPublicData();
   };
 
-  /* ------------------------------------------------ */
-  /* LOGIN */
-  /* ------------------------------------------------ */
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  };
 
-  const handleLogin = async (e: any) => {
+  /* ==============================
+      AUTH
+  =============================== */
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      alert(error.message);
-    }
-
+    await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
   };
 
-  /* ------------------------------------------------ */
-  /* LOGOUT */
-  /* ------------------------------------------------ */
-
-  const logout = async () => {
+  const handleLogout = async () => {
     await supabase.auth.signOut();
-    setUser(null);
   };
 
-  /* ------------------------------------------------ */
-  /* JOIN COMMUNITY */
-  /* ------------------------------------------------ */
+  /* ==============================
+      COMMUNITY JOIN
+  =============================== */
+  const handleJoin = async (hobbyId: string) => {
+    if (!currentUser) return;
 
-  const joinCommunity = async (hobbyId: string) => {
-    if (!user) return;
+    if (currentUser.joinedHobbies.includes(hobbyId)) return showToast("Already Joined");
 
     const { error } = await supabase.from("user_hobbies").insert({
-      user_id: user.id,
+      user_id: currentUser.id,
       hobby_id: hobbyId,
-      streak: 0,
     });
 
-    if (error) {
-      alert("Join failed: " + error.message);
-      return;
-    }
+    if (error) return showToast("Join failed", "error");
 
-    alert("✅ Joined community!");
+    setCurrentUser({
+      ...currentUser,
+      joinedHobbies: [...currentUser.joinedHobbies, hobbyId],
+    });
+
+    setHobbies((prev) =>
+      prev.map((h) => (h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h))
+    );
+
+    showToast("Joined Community!");
   };
 
-  /* ------------------------------------------------ */
-  /* LOGIN VIEW */
-  /* ------------------------------------------------ */
+  /* ==============================
+      POSTS
+  =============================== */
+  const handlePostCreate = async (content: string) => {
+    if (!currentUser || !content.trim() || !selectedHobby) return;
 
-  if (!user) {
+    setLoading(true);
+
+    await supabase.from("posts").insert({
+      user_id: currentUser.id,
+      hobby_id: selectedHobby.id,
+      content,
+    });
+
+    await fetchPublicData();
+    showToast("Post created!");
+    setLoading(false);
+  };
+
+  /* ==============================
+      UI VIEWS
+  =============================== */
+
+  if (view === ViewState.LOGIN) {
     return (
-      <div style={styles.page}>
-        <h1>Hobbystreak Login</h1>
-
-        <form onSubmit={handleLogin} style={styles.form}>
+      <div className="min-h-screen flex flex-col justify-center px-8">
+        <h1 className="text-2xl mb-4 font-bold">Hobbystreak Login</h1>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="input" />
           <input
-            style={styles.input}
-            placeholder="Email"
-            autoComplete="off"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-
-          <input
-            style={styles.input}
-            placeholder="Password"
-            autoComplete="off"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            className="input"
           />
-
-          <button style={styles.button} disabled={loading}>
-            {loading ? "Logging in..." : "Login"}
+          <button className="btn" disabled={loading}>
+            Login
           </button>
         </form>
       </div>
     );
   }
 
-  /* ------------------------------------------------ */
-  /* COMMUNITY VIEW */
-  /* ------------------------------------------------ */
+  if (view === ViewState.EXPLORE) {
+    return (
+      <div className="p-6 pb-32">
+        <h2 className="font-bold text-xl mb-6">Communities</h2>
 
-  return (
-    <div style={styles.page}>
-      <h2>Communities</h2>
-      <p>{user.email}</p>
-
-      <button onClick={logout} style={styles.logout}>
-        Logout
-      </button>
-
-      <div style={styles.grid}>
-        {hobbies.length === 0 && (
-          <p>❌ No communities found – insert again in SQL.</p>
-        )}
-
-        {hobbies.map((hobby) => (
-          <div key={hobby.id} style={styles.card}>
-            <h3>{hobby.name}</h3>
-            <p>{hobby.description}</p>
-            <small>{hobby.category}</small>
+        {hobbies.map((h) => (
+          <div
+            key={h.id}
+            className="border p-4 rounded-xl mb-4 cursor-pointer"
+            onClick={() => {
+              setSelectedHobby(h);
+              setView(ViewState.COMMUNITY_DETAILS);
+            }}
+          >
+            <h3 className="font-bold">
+              {h.icon} {h.name}
+            </h3>
+            <p>{h.description}</p>
+            <small>{h.memberCount} members</small>
 
             <button
-              style={styles.joinBtn}
-              onClick={() => joinCommunity(hobby.id)}
+              className="btn mt-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleJoin(h.id);
+              }}
             >
-              Join Community
+              Join
             </button>
           </div>
         ))}
       </div>
-    </div>
+    );
+  }
+
+  if (view === ViewState.COMMUNITY_DETAILS && selectedHobby) {
+    const communityPosts = posts.filter((p) => p.hobbyId === selectedHobby.id);
+    const [postText, setPostText] = useState("");
+
+    return (
+      <div className="p-6 pb-32">
+        <h2 className="text-xl font-bold mb-4">
+          {selectedHobby.icon} {selectedHobby.name}
+        </h2>
+        <textarea
+          value={postText}
+          onChange={(e) => setPostText(e.target.value)}
+          placeholder="Write a post..."
+          className="input h-24 mb-4"
+        />
+
+        <button
+          className="btn"
+          onClick={() => {
+            handlePostCreate(postText);
+            setPostText("");
+          }}
+          disabled={loading}
+        >
+          Post
+        </button>
+
+        <div className="mt-6 space-y-3">
+          {communityPosts.map((p) => (
+            <div key={p.id} className="border p-3 rounded-xl">
+              <p className="font-bold">{p.authorName}</p>
+              <p>{p.content}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {toast && <Toast message={toast.message} type={toast.type} />}
+
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex gap-6 bg-white px-6 py-3 shadow-xl rounded-full">
+        <button onClick={() => setView(ViewState.FEED)}>
+          <HomeIcon />
+        </button>
+        <button onClick={() => setView(ViewState.EXPLORE)}>
+          <CompassIcon />
+        </button>
+        <button onClick={() => setView(ViewState.PROFILE)}>
+          <UserIcon />
+        </button>
+      </div>
+    </>
   );
 }
-
-/* ------------------------------------------------ */
-
-const styles: any = {
-  page: {
-    fontFamily: "sans-serif",
-    maxWidth: "600px",
-    margin: "40px auto",
-    textAlign: "center",
-  },
-  form: {
-    display: "grid",
-    gap: "10px",
-    marginTop: "20px",
-  },
-  input: {
-    padding: "10px",
-    fontSize: "16px",
-  },
-  button: {
-    padding: "12px",
-    fontSize: "16px",
-    cursor: "pointer",
-  },
-  logout: {
-    background: "#111",
-    color: "white",
-    padding: "8px 14px",
-    marginBottom: "20px",
-    cursor: "pointer",
-  },
-  grid: {
-    display: "grid",
-    gap: "12px",
-    marginTop: "30px",
-  },
-  card: {
-    padding: "16px",
-    background: "#f7f7f7",
-    borderRadius: "8px",
-  },
-  joinBtn: {
-    marginTop: "10px",
-    padding: "8px",
-    cursor: "pointer",
-  },
-};

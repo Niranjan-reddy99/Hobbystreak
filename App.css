@@ -1,0 +1,28 @@
+/* Confetti Animation */
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: #ffd300;
+  top: -10px;
+  opacity: 0;
+  animation: fall 2.5s ease-in-out infinite;
+}
+
+@keyframes fall {
+  0% { top: -10%; transform: translateX(0) rotate(0deg); opacity: 1; }
+  20% { transform: translateX(-15px) rotate(45deg); }
+  40% { transform: translateX(15px) rotate(90deg); }
+  60% { transform: translateX(-15px) rotate(135deg); }
+  80% { transform: translateX(15px) rotate(180deg); }
+  100% { top: 110%; transform: translateX(0) rotate(225deg); opacity: 0; }
+}
+
+/* Hide Scrollbar but keep functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

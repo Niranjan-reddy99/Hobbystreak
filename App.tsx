@@ -4,7 +4,7 @@ import {
   Home, Compass, User as UserIcon, Plus, Heart, MessageCircle, 
   Check, ArrowLeft, X, LogOut, Flame, Calendar, 
   Bell, Loader2, Signal, Wifi, Battery, ChevronRight, Trophy, Users,
-  CheckCircle, Circle, Trash2
+  CheckCircle, Circle, Trash2, Star, Zap
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -68,7 +68,7 @@ interface Post {
 interface Task {
   id: string;
   title: string;
-  date: string; // ISO Date String YYYY-MM-DD
+  date: string; 
   completed: boolean;
   hobbyId?: string; 
 }
@@ -115,6 +115,17 @@ const MOCK_POSTS: Post[] = [
     authorName: 'Sarah J.',
     authorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
     timestamp: '2h ago'
+  },
+  {
+    id: 'p2',
+    userId: 'u3',
+    hobbyId: 'h3',
+    content: 'Fixed a bug that was haunting me for 3 days. Best feeling ever.',
+    likes: 128,
+    comments: ['Nice!', 'Relatable'],
+    authorName: 'Alex Dev',
+    authorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
+    timestamp: '4h ago'
   }
 ];
 
@@ -126,9 +137,15 @@ const MOCK_USER: User = {
   joinedHobbies: ['h1'],
   stats: {
       totalStreak: 12,
-      points: 450
+      points: 340 // 340 points = Level 3 (since 100 pts per level)
   }
 };
+
+const LEADERBOARD_USERS = [
+    { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
+    { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
+    { name: 'Mike T.', streak: 28, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike' },
+];
 
 const INITIAL_TASKS: Task[] = [
     { id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' },
@@ -142,6 +159,19 @@ const Toast = ({ message, type = 'success' }: { message: string, type?: 'success
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
     <span className="text-sm font-medium">{message}</span>
   </div>
+);
+
+// Confetti Component (CSS Only Implementation)
+const Confetti = () => (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden z-50 flex justify-center">
+        <div className="confetti-piece bg-red-500 left-[10%]"></div>
+        <div className="confetti-piece bg-blue-500 left-[20%] delay-100"></div>
+        <div className="confetti-piece bg-yellow-500 left-[30%] delay-200"></div>
+        <div className="confetti-piece bg-green-500 left-[40%]"></div>
+        <div className="confetti-piece bg-purple-500 left-[50%] delay-100"></div>
+        <div className="confetti-piece bg-pink-500 left-[60%]"></div>
+        <div className="confetti-piece bg-orange-500 left-[70%] delay-200"></div>
+    </div>
 );
 
 const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled, isLoading }: any) => {
@@ -179,43 +209,30 @@ export default function App() {
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-
+  
   // UI
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- PERSISTENCE LOGIC (Load data on start) ---
+  // --- PERSISTENCE LOGIC ---
   useEffect(() => {
-    // 1. Try to load user
     const savedUser = localStorage.getItem('hobbystreak_user');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
       setView(ViewState.FEED);
     }
-
-    // 2. Try to load posts
     const savedPosts = localStorage.getItem('hobbystreak_posts');
-    if (savedPosts) {
-      setPosts(JSON.parse(savedPosts));
-    } else {
-      setPosts(MOCK_POSTS);
-    }
+    if (savedPosts) setPosts(JSON.parse(savedPosts));
+    else setPosts(MOCK_POSTS);
 
-    // 3. Try to load hobbies (New!)
     const savedHobbies = localStorage.getItem('hobbystreak_hobbies');
-    if (savedHobbies) {
-        setHobbies(JSON.parse(savedHobbies));
-    } else {
-        setHobbies(MOCK_HOBBIES);
-    }
+    if (savedHobbies) setHobbies(JSON.parse(savedHobbies));
+    else setHobbies(MOCK_HOBBIES);
 
-    // 4. Try to load tasks
     const savedTasks = localStorage.getItem('hobbystreak_tasks');
-    if (savedTasks) {
-       setTasks(JSON.parse(savedTasks));
-    } else {
-       setTasks(INITIAL_TASKS);
-    }
+    if (savedTasks) setTasks(JSON.parse(savedTasks));
+    else setTasks(INITIAL_TASKS);
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -223,7 +240,12 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // --- HANDLERS (With Save Logic) ---
+  const triggerConfetti = () => {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 2000); // Stop after 2s
+  };
+
+  // --- HANDLERS ---
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,7 +254,6 @@ export default function App() {
       const user = { ...MOCK_USER, email };
       setCurrentUser(user);
       localStorage.setItem('hobbystreak_user', JSON.stringify(user));
-      
       setView(ViewState.FEED);
       setIsLoading(false);
       showToast("Welcome back!");
@@ -253,25 +274,18 @@ export default function App() {
         description,
         category,
         memberCount: 1,
-        icon: '🌟', // Default icon for now
+        icon: '🌟', 
         image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=600&q=80'
     };
-
     const updatedHobbies = [...hobbies, newHobby];
     setHobbies(updatedHobbies);
     localStorage.setItem('hobbystreak_hobbies', JSON.stringify(updatedHobbies));
 
-    // Auto-join the creator
-    const updatedUser = currentUser ? {
-        ...currentUser,
-        joinedHobbies: [...currentUser.joinedHobbies, newHobby.id]
-    } : null;
-
+    const updatedUser = currentUser ? { ...currentUser, joinedHobbies: [...currentUser.joinedHobbies, newHobby.id] } : null;
     if (updatedUser) {
         setCurrentUser(updatedUser);
         localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
     }
-
     setTimeout(() => {
         setIsLoading(false);
         setView(ViewState.EXPLORE);
@@ -282,21 +296,14 @@ export default function App() {
   const handleJoinCommunity = (e: React.MouseEvent, hobbyId: string) => {
     e.stopPropagation();
     if (currentUser?.joinedHobbies.includes(hobbyId)) return showToast("Already joined!");
-    
-    const updatedUser = currentUser ? {
-        ...currentUser,
-        joinedHobbies: [...currentUser.joinedHobbies, hobbyId]
-    } : null;
-
+    const updatedUser = currentUser ? { ...currentUser, joinedHobbies: [...currentUser.joinedHobbies, hobbyId] } : null;
     if (updatedUser) {
         setCurrentUser(updatedUser);
         localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
     }
-    
     const updatedHobbies = hobbies.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h);
     setHobbies(updatedHobbies);
     localStorage.setItem('hobbystreak_hobbies', JSON.stringify(updatedHobbies));
-    
     showToast("Joined Community!");
   };
 
@@ -317,44 +324,49 @@ export default function App() {
         authorAvatar: currentUser!.avatar,
         timestamp: 'Just now'
     };
-    
     const updatedPosts = [newPost, ...posts];
     setPosts(updatedPosts);
     localStorage.setItem('hobbystreak_posts', JSON.stringify(updatedPosts));
     
-    // Update User Stats
     if (currentUser) {
         const updatedUser = {
             ...currentUser,
-            stats: {
-                ...currentUser.stats,
-                totalStreak: currentUser.stats.totalStreak + 1,
-                points: currentUser.stats.points + 10
-            }
+            stats: { ...currentUser.stats, totalStreak: currentUser.stats.totalStreak + 1, points: currentUser.stats.points + 20 }
         };
         setCurrentUser(updatedUser);
         localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
     }
-
     setView(ViewState.FEED);
-    showToast("Posted! Streak +1 🔥");
+    showToast("Posted! +20 XP 🔥");
+    triggerConfetti();
   };
 
   // Schedule Functions
   const handleToggleTask = (taskId: string) => {
+      const task = tasks.find(t => t.id === taskId);
+      const isCompleting = !task?.completed;
+      
       const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
       setTasks(updatedTasks);
       localStorage.setItem('hobbystreak_tasks', JSON.stringify(updatedTasks));
+
+      if (isCompleting) {
+          triggerConfetti();
+          // Give points for completing task
+          if (currentUser) {
+              const updatedUser = {
+                  ...currentUser,
+                  stats: { ...currentUser.stats, points: currentUser.stats.points + 50 }
+              };
+              setCurrentUser(updatedUser);
+              localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
+              showToast("Task Complete! +50 XP");
+          }
+      }
   };
 
   const handleAddTask = (title: string, hobbyId?: string) => {
-      const newTask: Task = {
-          id: `t${Date.now()}`,
-          title,
-          date: selectedDate,
-          completed: false,
-          hobbyId
-      };
+      const newTask: Task = { id: `t${Date.now()}`, title, date: selectedDate, completed: false, hobbyId };
       const updatedTasks = [...tasks, newTask];
       setTasks(updatedTasks);
       localStorage.setItem('hobbystreak_tasks', JSON.stringify(updatedTasks));
@@ -383,11 +395,7 @@ export default function App() {
   const StatusBar = () => (
     <div className="flex justify-between items-center px-6 py-3 bg-slate-50 text-slate-900 text-xs font-bold sticky top-0 z-20">
         <span>9:41</span>
-        <div className="flex gap-2">
-            <Signal className="w-4 h-4" />
-            <Wifi className="w-4 h-4" />
-            <Battery className="w-4 h-4" />
-        </div>
+        <div className="flex gap-2"><Signal className="w-4 h-4" /><Wifi className="w-4 h-4" /><Battery className="w-4 h-4" /></div>
     </div>
   );
 
@@ -399,6 +407,7 @@ export default function App() {
         
         <StatusBar />
         {toast && <Toast message={toast.message} type={toast.type} />}
+        {showConfetti && <Confetti />}
 
         {/* CONTENT AREA */}
         <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
@@ -503,16 +512,28 @@ export default function App() {
                     {/* Category Filter Chips */}
                     <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 pb-2">
                         {Object.values(HobbyCategory).map(cat => (
-                            <button 
-                                key={cat}
-                                onClick={() => setSelectedCategory(cat)}
-                                className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === cat ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-100'}`}
-                            >
+                            <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === cat ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 border border-slate-100'}`}>
                                 {cat}
                             </button>
                         ))}
                     </div>
 
+                    {/* NEW: Leaderboard Section */}
+                    <div className="mb-8">
+                        <h2 className="text-sm font-bold text-slate-400 uppercase mb-3 tracking-wider">Top Streakers</h2>
+                        <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
+                            {LEADERBOARD_USERS.map((user, i) => (
+                                <div key={i} className="bg-white p-3 rounded-2xl shadow-sm min-w-[120px] flex flex-col items-center border border-slate-100 relative">
+                                    {i === 0 && <div className="absolute -top-3"><Trophy className="w-6 h-6 text-yellow-400 fill-current" /></div>}
+                                    <img src={user.avatar} className="w-12 h-12 rounded-full mb-2 bg-slate-100" />
+                                    <p className="font-bold text-xs">{user.name}</p>
+                                    <p className="text-[10px] text-orange-500 font-bold">🔥 {user.streak} days</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <h2 className="text-sm font-bold text-slate-400 uppercase mb-3 tracking-wider">Communities</h2>
                     <div className="space-y-4">
                         {hobbies
                             .filter(h => selectedCategory === HobbyCategory.ALL || h.category === selectedCategory)
@@ -523,11 +544,7 @@ export default function App() {
                                     <h3 className="font-bold text-sm">{h.name}</h3>
                                     <p className="text-xs text-slate-400">{h.memberCount} members</p>
                                 </div>
-                                <Button 
-                                    variant={currentUser?.joinedHobbies.includes(h.id) ? 'ghost' : 'secondary'} 
-                                    className="text-xs py-2 px-3 h-auto" 
-                                    onClick={(e: React.MouseEvent) => handleJoinCommunity(e, h.id)}
-                                >
+                                <Button variant={currentUser?.joinedHobbies.includes(h.id) ? 'ghost' : 'secondary'} className="text-xs py-2 px-3 h-auto" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, h.id)}>
                                     {currentUser?.joinedHobbies.includes(h.id) ? 'Joined' : 'Join'}
                                 </Button>
                             </div>
@@ -587,14 +604,9 @@ export default function App() {
                      </div>
                      <div className="p-6">
                          <p className="text-sm text-slate-600 mb-6 leading-relaxed">{selectedHobby.description}</p>
-                         <Button 
-                            className="w-full mb-8"
-                            onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}
-                            variant={currentUser?.joinedHobbies.includes(selectedHobby.id) ? 'secondary' : 'primary'}
-                         >
+                         <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)} variant={currentUser?.joinedHobbies.includes(selectedHobby.id) ? 'secondary' : 'primary'}>
                              {currentUser?.joinedHobbies.includes(selectedHobby.id) ? 'Already Joined' : 'Join Community'}
                          </Button>
-
                          <h3 className="font-bold text-sm mb-4">Community Posts</h3>
                          <div className="space-y-4">
                              {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (
@@ -622,11 +634,30 @@ export default function App() {
                         <button onClick={handleLogout} className="text-red-500"><LogOut className="w-5 h-5" /></button>
                      </div>
                      <div className="text-center mb-8">
-                         <div className="w-24 h-24 rounded-full bg-slate-200 mx-auto mb-4 overflow-hidden border-4 border-white shadow-lg">
-                             <img src={currentUser?.avatar} className="w-full h-full object-cover" />
+                         <div className="relative w-24 h-24 mx-auto mb-4">
+                             <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">
+                                 <img src={currentUser?.avatar} className="w-full h-full object-cover" />
+                             </div>
+                             <div className="absolute -bottom-2 -right-2 bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-full border-4 border-slate-50">
+                                 Lvl {Math.floor((currentUser?.stats.points || 0) / 100) + 1}
+                             </div>
                          </div>
                          <h2 className="text-xl font-bold">{currentUser?.name}</h2>
                          <p className="text-sm text-slate-400">{currentUser?.email}</p>
+                     </div>
+
+                     {/* NEW: XP Progress Bar */}
+                     <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 border border-slate-100">
+                         <div className="flex justify-between items-center mb-2">
+                             <span className="text-xs font-bold text-slate-400 uppercase">XP Progress</span>
+                             <span className="text-xs font-bold text-slate-900">{(currentUser?.stats.points || 0) % 100} / 100</span>
+                         </div>
+                         <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                             <div className="bg-indigo-500 h-full rounded-full transition-all duration-500" style={{ width: `${(currentUser?.stats.points || 0) % 100}%` }}></div>
+                         </div>
+                         <p className="text-[10px] text-slate-400 mt-2 text-center">
+                             {100 - ((currentUser?.stats.points || 0) % 100)} XP to next level
+                         </p>
                      </div>
 
                      <div className="grid grid-cols-2 gap-4 mb-8">
@@ -683,7 +714,7 @@ export default function App() {
                         const content = (document.getElementById('post-content') as HTMLTextAreaElement).value;
                         const firstHobby = currentUser?.joinedHobbies[0] || 'h1';
                         handleCreatePost(content, firstHobby);
-                    }}>Post Update</Button>
+                    }}>Post Update (+20 XP)</Button>
                 </div>
             )}
 
@@ -699,11 +730,7 @@ export default function App() {
                             const isToday = dateStr === new Date().toISOString().split('T')[0];
                             
                             return (
-                                <button 
-                                    key={index}
-                                    onClick={() => setSelectedDate(dateStr)}
-                                    className={`flex flex-col items-center justify-center min-w-[50px] h-[70px] rounded-2xl transition-all ${isSelected ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/30 scale-105' : 'bg-white text-slate-400 border border-slate-100'}`}
-                                >
+                                <button key={index} onClick={() => setSelectedDate(dateStr)} className={`flex flex-col items-center justify-center min-w-[50px] h-[70px] rounded-2xl transition-all ${isSelected ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/30 scale-105' : 'bg-white text-slate-400 border border-slate-100'}`}>
                                     <span className="text-[10px] font-bold uppercase">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()]}</span>
                                     <span className={`text-lg font-bold ${isSelected ? 'text-white' : 'text-slate-900'}`}>{date.getDate()}</span>
                                     {isToday && !isSelected && <div className="w-1 h-1 bg-red-500 rounded-full mt-1"></div>}
@@ -723,9 +750,7 @@ export default function App() {
 
                     {/* Task List */}
                     <div className="flex-1 overflow-y-auto space-y-3 pb-24 pr-2">
-                        {tasks
-                            .filter(t => t.date === selectedDate)
-                            .map(task => {
+                        {tasks.filter(t => t.date === selectedDate).map(task => {
                                 const taskHobby = hobbies.find(h => h.id === task.hobbyId);
                                 return (
                                     <div key={task.id} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-3 group">
@@ -747,7 +772,6 @@ export default function App() {
                                     </div>
                                 );
                         })}
-                        
                         {tasks.filter(t => t.date === selectedDate).length === 0 && (
                             <div className="text-center py-10 text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">
                                 <p>No tasks for this day.</p>
@@ -759,28 +783,8 @@ export default function App() {
                     {/* Quick Add Task */}
                     <div className="absolute bottom-24 left-6 right-6">
                         <div className="bg-white p-2 rounded-2xl shadow-lg border border-slate-100 flex gap-2">
-                            <input 
-                                id="new-task-input"
-                                className="flex-1 pl-4 outline-none text-sm" 
-                                placeholder="Add a new task..." 
-                                onKeyDown={(e) => {
-                                    if(e.key === 'Enter') {
-                                        const input = e.currentTarget;
-                                        handleAddTask(input.value, currentUser?.joinedHobbies[0]);
-                                        input.value = '';
-                                    }
-                                }}
-                            />
-                            <Button 
-                                className="w-10 h-10 p-0 rounded-xl" 
-                                onClick={() => {
-                                    const input = document.getElementById('new-task-input') as HTMLInputElement;
-                                    if(input.value) {
-                                        handleAddTask(input.value, currentUser?.joinedHobbies[0]);
-                                        input.value = '';
-                                    }
-                                }}
-                            >
+                            <input id="new-task-input" className="flex-1 pl-4 outline-none text-sm" placeholder="Add a new task..." onKeyDown={(e) => { if(e.key === 'Enter') { const input = e.currentTarget; handleAddTask(input.value, currentUser?.joinedHobbies[0]); input.value = ''; }}} />
+                            <Button className="w-10 h-10 p-0 rounded-xl" onClick={() => { const input = document.getElementById('new-task-input') as HTMLInputElement; if(input.value) { handleAddTask(input.value, currentUser?.joinedHobbies[0]); input.value = ''; }}}>
                                 <Plus className="w-5 h-5" />
                             </Button>
                         </div>
@@ -790,7 +794,7 @@ export default function App() {
         </div>
 
         {/* BOTTOM NAVIGATION */}
-        {![ViewState.LOGIN, ViewState.REGISTER, ViewState.ONBOARDING, ViewState.COMMUNITY_DETAILS, ViewState.CREATE_HOBBY].includes(view) && (
+        {![ViewState.LOGIN, ViewState.REGISTER, ViewState.ONBOARDING, ViewState.COMMUNITY_DETAILS].includes(view) && (
             <div className="absolute bottom-6 left-6 right-6">
                 <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
                     <button onClick={() => setView(ViewState.FEED)} className={view === ViewState.FEED ? 'text-slate-900' : 'text-slate-300'}><Home className="w-6 h-6" /></button>

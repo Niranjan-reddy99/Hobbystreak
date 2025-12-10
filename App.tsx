@@ -11,7 +11,11 @@ import {
 // --- CONFIGURATION ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const isSupabaseConfigured = supabaseUrl && supabaseKey;
+
+const supabase = isSupabaseConfigured 
+  ? createClient(supabaseUrl, supabaseKey) 
+  : null;
 
 // --- TYPES ---
 enum ViewState {
@@ -32,7 +36,7 @@ interface User {
   name: string;
   email: string;
   avatar: string;
-  joinedHobbies: string[]; // List of UUIDs
+  joinedHobbies: string[]; // List of UUID strings
   stats: {
     totalStreak: number;
     points: number;
@@ -70,13 +74,13 @@ interface Task {
 }
 
 // --- CONSTANTS ---
+const INITIAL_TASKS: Task[] = [
+    { id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' },
+];
+
 const LEADERBOARD_USERS = [
     { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
     { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
-];
-
-const INITIAL_TASKS: Task[] = [
-    { id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' },
 ];
 
 // --- COMPONENTS ---
@@ -132,6 +136,8 @@ export default function App() {
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  
+  // NEW: Post Selection State
   const [selectedPostHobbyId, setSelectedPostHobbyId] = useState<string>('');
 
   // UI
@@ -142,17 +148,14 @@ export default function App() {
   // --- INITIALIZATION ---
   useEffect(() => {
     const initData = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
+        if (!supabase) return;
         
-        // 1. Fetch Public Data First
-        await fetchHobbiesAndPosts();
-        await fetchLeaderboard();
-
-        // 2. If User Logged In, Fetch User Data
+        // 1. Session Check
+        const { data: { session } } = await supabase.auth.getSession();
         if (session) {
             const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
             
-            // Get joined hobbies from DB
+            // Get joined hobbies directly
             const { data: joinedData } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', session.user.id);
             const joinedIds = joinedData ? joinedData.map((d: any) => d.hobby_id) : [];
 
@@ -167,7 +170,9 @@ export default function App() {
             setView(ViewState.FEED);
         }
 
-        // 3. Load Local Tasks
+        await fetchHobbiesAndPosts();
+        await fetchLeaderboard();
+        
         const savedTasks = localStorage.getItem('hobbystreak_tasks');
         if (savedTasks) setTasks(JSON.parse(savedTasks));
         else setTasks(INITIAL_TASKS);
@@ -176,16 +181,32 @@ export default function App() {
     initData();
   }, []);
 
-  // --- AUTO SELECT HOBBY ---
+  // --- FORCE REFRESH SELECTION ON POST VIEW ---
   useEffect(() => {
-      if (view === ViewState.CREATE_POST && currentUser?.joinedHobbies?.length && !selectedPostHobbyId) {
-          setSelectedPostHobbyId(currentUser.joinedHobbies[0]);
+      // Whenever view changes to CREATE_POST, force a selection if none exists
+      if (view === ViewState.CREATE_POST && currentUser?.joinedHobbies?.length) {
+          // Always default to the first hobby if nothing is selected or if selection is invalid
+          if (!selectedPostHobbyId || !currentUser.joinedHobbies.includes(selectedPostHobbyId)) {
+              console.log("Auto-selecting hobby:", currentUser.joinedHobbies[0]);
+              setSelectedPostHobbyId(currentUser.joinedHobbies[0]);
+          }
       }
-  }, [view, currentUser?.joinedHobbies]);
+  }, [view, currentUser?.joinedHobbies, selectedPostHobbyId]);
 
   // --- DATA FETCHING ---
+  const fetchUserHobbies = async (userId: string) => {
+      if (!supabase) return;
+      const { data: joinedData } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', userId);
+      const joinedIds = joinedData ? joinedData.map((d: any) => d.hobby_id) : [];
+      
+      // Update state
+      setCurrentUser(prev => prev ? { ...prev, joinedHobbies: joinedIds } : null);
+      return joinedIds; // Return for immediate usage
+  };
+
   const fetchHobbiesAndPosts = async () => {
-      // Fetch Hobbies
+      if (!supabase) return;
+      
       const { data: hobbiesData } = await supabase.from('hobbies').select('*');
       if (hobbiesData) {
           setHobbies(hobbiesData.map((h: any) => ({
@@ -196,7 +217,6 @@ export default function App() {
           })));
       }
 
-      // Fetch Posts
       const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
       if (postsData) {
           const userIds = [...new Set(postsData.map((p:any) => p.user_id))];
@@ -216,6 +236,7 @@ export default function App() {
   };
 
   const fetchLeaderboard = async () => {
+      if (!supabase) return;
       const { data: profiles } = await supabase.from('profiles').select('*');
       if (profiles) {
           const sorted = profiles
@@ -244,24 +265,29 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    if (!supabase) return;
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        window.location.reload(); // Force reload to sync state perfectly
+        // Force a fresh fetch of everything on login
+        window.location.reload(); 
     }
     setIsLoading(false);
   };
 
   const handleRegister = async () => {
+      if (!supabase) return;
       setIsLoading(true);
       const { data, error } = await supabase.auth.signUp({
           email, password, options: { data: { full_name: name } }
       });
 
-      if (error) showToast(error.message, 'error');
-      else if (data.user) {
+      if (error) {
+          showToast(error.message, 'error');
+      } else if (data.user) {
           await supabase.from('profiles').insert({
               id: data.user.id, name: name, email: email,
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
@@ -274,32 +300,39 @@ export default function App() {
   };
   
   const handleLogout = async () => {
-      await supabase.auth.signOut();
+      if (supabase) await supabase.auth.signOut();
       setCurrentUser(null);
       setView(ViewState.LOGIN);
   };
 
   const handleCreateHobby = async (name: string, description: string, category: HobbyCategory) => {
+    if (!supabase || !currentUser) return;
     setIsLoading(true);
-    // 1. Create in DB
+    
+    // 1. Create Hobby
     const { data, error } = await supabase.from('hobbies').insert({
         name, description, category, icon: '🌟', member_count: 1
     }).select().single();
 
-    if (!error && data && currentUser) {
-        // 2. Join in DB
+    if (!error && data) {
+        // 2. Join it immediately in DB
         await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
         
-        // 3. Update Local State INSTANTLY
+        // 3. OPTIMISTIC UPDATE: Manually update local state immediately
+        const newJoinedList = [...currentUser.joinedHobbies, data.id];
+        
+        // Add new hobby to list
         const newHobby: Hobby = { ...data, memberCount: 1, image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f', icon: '🌟' };
         setHobbies(prev => [...prev, newHobby]);
         
-        const newJoinedIds = [...currentUser.joinedHobbies, data.id];
-        setCurrentUser({ ...currentUser, joinedHobbies: newJoinedIds });
+        // Update user state
+        setCurrentUser({ ...currentUser, joinedHobbies: newJoinedList });
         
-        setSelectedPostHobbyId(data.id); // Auto-select for posting
+        // Update selection state for posting
+        setSelectedPostHobbyId(data.id);
+
         setView(ViewState.EXPLORE);
-        showToast("Community Created!");
+        showToast("Created & Joined!");
     } else {
         showToast("Failed to create", 'error');
     }
@@ -308,29 +341,52 @@ export default function App() {
 
   const handleJoinCommunity = async (e: React.MouseEvent, hobbyId: string) => {
     e.stopPropagation();
-    if (!currentUser) return showToast("Please log in");
-    if (currentUser.joinedHobbies.includes(hobbyId)) return showToast("Already joined!");
+    if (!supabase || !currentUser) return showToast("Please log in");
+    
+    // Check local state first to prevent unnecessary API calls
+    if (currentUser.joinedHobbies.includes(hobbyId)) {
+        return showToast("Already joined!");
+    }
     
     const { error } = await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
 
     if (!error) {
-        const newJoinedIds = [...currentUser.joinedHobbies, hobbyId];
-        setCurrentUser({ ...currentUser, joinedHobbies: newJoinedIds });
-        setSelectedPostHobbyId(hobbyId); // Auto-select
-        showToast("Joined!");
+        // Optimistic Update
+        const newJoinedList = [...currentUser.joinedHobbies, hobbyId];
+        setCurrentUser({ ...currentUser, joinedHobbies: newJoinedList });
+        setSelectedPostHobbyId(hobbyId);
+        
+        // Update member count visually
+        setHobbies(prev => prev.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h));
+        
+        showToast("Joined Community!");
     } else {
-        showToast("Error joining", 'error');
+        if (error.code === '23505') { 
+             showToast("Already joined!");
+             // Sync if needed
+             if (!currentUser.joinedHobbies.includes(hobbyId)) {
+                 setCurrentUser(prev => prev ? { ...prev, joinedHobbies: [...prev.joinedHobbies, hobbyId] } : null);
+             }
+        } else {
+             showToast("Error joining", 'error');
+        }
     }
   };
 
-  const handleCreatePost = async (content: string, hobbyId: string) => {
-    if (!currentUser) return;
-    if (!hobbyId) return showToast("Please select a community", "error");
-    
-    // Ensure the ID is valid (exists in our hobbies list)
-    const isValidHobby = hobbies.some(h => h.id === hobbyId);
-    if(!isValidHobby) return showToast("Invalid community selected", "error");
+  const handleViewCommunity = (hobby: Hobby) => {
+      setSelectedHobby(hobby);
+      setView(ViewState.COMMUNITY_DETAILS);
+  };
 
+  const handleCreatePost = async (content: string, hobbyId: string) => {
+    if (!supabase || !currentUser) return;
+    
+    if (!hobbyId) {
+        // Fallback: if state is empty, try to grab the first one from user object
+        if (currentUser.joinedHobbies.length > 0) hobbyId = currentUser.joinedHobbies[0];
+        else return showToast("Join a community first!", "error");
+    }
+    
     const { error } = await supabase.from('posts').insert({
         user_id: currentUser.id,
         hobby_id: hobbyId,
@@ -343,15 +399,16 @@ export default function App() {
         setCurrentUser({ ...currentUser, stats: newStats });
         
         await fetchHobbiesAndPosts();
+        
         setView(ViewState.FEED);
         showToast("Posted! +20 XP 🔥");
         triggerConfetti();
     } else {
-        showToast("Failed to post: " + error.message, 'error');
+        showToast("Failed to post", 'error');
     }
   };
 
-  // Schedule (Local Only)
+  // Schedule (Local)
   const handleToggleTask = (taskId: string) => {
       const task = tasks.find(t => t.id === taskId);
       const isCompleting = !task?.completed;
@@ -359,11 +416,12 @@ export default function App() {
       setTasks(updatedTasks);
       localStorage.setItem('hobbystreak_tasks', JSON.stringify(updatedTasks));
 
-      if (isCompleting && currentUser) {
+      if (isCompleting && currentUser && supabase) {
           triggerConfetti();
           const newStats = { ...currentUser.stats, points: currentUser.stats.points + 50 };
-          supabase.from('profiles').update({ stats: newStats }).eq('id', currentUser.id);
-          setCurrentUser({ ...currentUser, stats: newStats });
+          supabase.from('profiles').update({ stats: newStats }).eq('id', currentUser.id).then(() => {
+              setCurrentUser({ ...currentUser, stats: newStats }); 
+          });
           showToast("Task Complete! +50 XP");
       }
   };
@@ -422,6 +480,13 @@ export default function App() {
                         </div>
                         <h1 className="text-2xl font-bold text-slate-900">Hobbystreak</h1>
                     </div>
+                    
+                    {!supabase && (
+                        <div className="mb-4 p-3 bg-red-100 text-red-700 text-xs rounded-xl border border-red-200">
+                            <b>Setup Needed:</b> Create .env file with VITE_SUPABASE_URL
+                        </div>
+                    )}
+
                     <form onSubmit={handleLogin} className="space-y-4">
                         <input className="w-full p-4 bg-white rounded-2xl border-none shadow-sm" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
                         <input className="w-full p-4 bg-white rounded-2xl border-none shadow-sm" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
@@ -431,6 +496,7 @@ export default function App() {
                 </div>
             )}
 
+            {/* REGISTER VIEW */}
             {view === ViewState.REGISTER && (
                 <div className="h-full flex flex-col justify-center px-8">
                     <button onClick={() => setView(ViewState.LOGIN)} className="absolute top-12 left-6 p-2 bg-white rounded-full"><ArrowLeft className="w-5 h-5" /></button>
@@ -444,6 +510,7 @@ export default function App() {
                 </div>
             )}
 
+            {/* ONBOARDING VIEW */}
             {view === ViewState.ONBOARDING && (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center">
                     <h1 className="text-2xl font-bold mb-2">Welcome! 🎉</h1>
@@ -452,6 +519,7 @@ export default function App() {
                 </div>
             )}
 
+            {/* FEED VIEW */}
             {view === ViewState.FEED && (
                 <div className="px-6 pt-4">
                     <div className="flex justify-between items-center mb-6">
@@ -499,11 +567,12 @@ export default function App() {
                                 </div>
                              );
                         })}
-                        {posts.length === 0 && <div className="text-center text-slate-400 mt-10">No posts yet. Join a community!</div>}
+                        {posts.length === 0 && <div className="text-center text-slate-400 mt-10">No posts yet. Join a community and start posting!</div>}
                     </div>
                 </div>
             )}
 
+            {/* EXPLORE VIEW */}
             {view === ViewState.EXPLORE && (
                 <div className="px-6 pt-4">
                     <div className="flex justify-between items-center mb-4">
@@ -522,15 +591,14 @@ export default function App() {
                     <div className="mb-8">
                         <h2 className="text-sm font-bold text-slate-400 uppercase mb-3 tracking-wider">Top Streakers</h2>
                         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-                            {leaderboard.length > 0 ? leaderboard.map((user, i) => (
+                            {LEADERBOARD_USERS.map((user, i) => (
                                 <div key={i} className="bg-white p-3 rounded-2xl shadow-sm min-w-[120px] flex flex-col items-center border border-slate-100 relative">
                                     {i === 0 && <div className="absolute -top-3"><Trophy className="w-6 h-6 text-yellow-400 fill-current" /></div>}
                                     <img src={user.avatar} className="w-12 h-12 rounded-full mb-2 bg-slate-100" />
                                     <p className="font-bold text-xs">{user.name}</p>
-                                    <p className="text-[10px] text-orange-500 font-bold">🔥 {user.stats.totalStreak} days</p>
-                                    <p className="text-[10px] text-slate-400">{user.stats.points} XP</p>
+                                    <p className="text-[10px] text-orange-500 font-bold">🔥 {user.streak} days</p>
                                 </div>
-                            )) : <p className="text-sm text-slate-400">No users yet.</p>}
+                            ))}
                         </div>
                     </div>
 
@@ -539,7 +607,7 @@ export default function App() {
                         {hobbies
                             .filter(h => selectedCategory === HobbyCategory.ALL || h.category === selectedCategory)
                             .map(h => (
-                            <div key={h.id} onClick={() => { setSelectedHobby(h); setView(ViewState.COMMUNITY_DETAILS); }} className="bg-white p-4 rounded-3xl flex items-center gap-4 shadow-sm active:scale-95 transition-transform cursor-pointer">
+                            <div key={h.id} onClick={() => handleViewCommunity(h)} className="bg-white p-4 rounded-3xl flex items-center gap-4 shadow-sm active:scale-95 transition-transform cursor-pointer">
                                 <div className="text-3xl bg-slate-50 w-14 h-14 rounded-2xl flex items-center justify-center">{h.icon}</div>
                                 <div className="flex-1">
                                     <h3 className="font-bold text-sm">{h.name}</h3>
@@ -554,6 +622,7 @@ export default function App() {
                 </div>
             )}
 
+            {/* CREATE HOBBY VIEW */}
             {view === ViewState.CREATE_HOBBY && (
                 <div className="h-full bg-white p-6 pt-12">
                      <div className="flex justify-between items-center mb-6">
@@ -572,13 +641,16 @@ export default function App() {
                         <div>
                             <label className="text-xs font-bold text-slate-400 uppercase">Category</label>
                             <select id="hobby-cat" className="w-full p-4 bg-slate-50 rounded-2xl mt-1 outline-none">
-                                {Object.values(HobbyCategory).filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+                                {Object.values(HobbyCategory).filter(c => c !== 'All').map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                ))}
                             </select>
                         </div>
                         <Button className="w-full mt-4" onClick={() => {
                             const name = (document.getElementById('hobby-name') as HTMLInputElement).value;
                             const desc = (document.getElementById('hobby-desc') as HTMLTextAreaElement).value;
                             const cat = (document.getElementById('hobby-cat') as HTMLSelectElement).value as HobbyCategory;
+                            
                             if(name && desc) handleCreateHobby(name, desc, cat);
                             else showToast("Please fill all fields", "error");
                         }}>Create Community</Button>
@@ -586,6 +658,7 @@ export default function App() {
                 </div>
             )}
 
+            {/* COMMUNITY DETAILS VIEW */}
             {view === ViewState.COMMUNITY_DETAILS && selectedHobby && (
                 <div className="bg-white min-h-full">
                      <div className="h-48 relative">
@@ -625,6 +698,7 @@ export default function App() {
                 </div>
             )}
 
+            {/* PROFILE VIEW */}
             {view === ViewState.PROFILE && (
                 <div className="px-6 pt-4">
                      <div className="flex justify-between items-center mb-8">
@@ -644,6 +718,7 @@ export default function App() {
                          <p className="text-sm text-slate-400">{currentUser?.email}</p>
                      </div>
 
+                     {/* XP Progress Bar */}
                      <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 border border-slate-100">
                          <div className="flex justify-between items-center mb-2">
                              <span className="text-xs font-bold text-slate-400 uppercase">XP Progress</span>
@@ -655,6 +730,19 @@ export default function App() {
                          <p className="text-[10px] text-slate-400 mt-2 text-center">
                              {100 - ((currentUser?.stats.points || 0) % 100)} XP to next level
                          </p>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4 mb-8">
+                         <div className="bg-white p-4 rounded-3xl shadow-sm text-center">
+                             <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-500 mx-auto mb-2"><Flame className="w-5 h-5" fill="currentColor" /></div>
+                             <p className="text-2xl font-bold">{currentUser?.stats.totalStreak}</p>
+                             <p className="text-[10px] uppercase font-bold text-slate-400">Streak</p>
+                         </div>
+                         <div className="bg-white p-4 rounded-3xl shadow-sm text-center">
+                             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 mx-auto mb-2"><Users className="w-5 h-5" /></div>
+                             <p className="text-2xl font-bold">{currentUser?.joinedHobbies.length}</p>
+                             <p className="text-[10px] uppercase font-bold text-slate-400">Hobbies</p>
+                         </div>
                      </div>
 
                      <h3 className="font-bold text-sm mb-4">My Hobbies</h3>
@@ -669,10 +757,14 @@ export default function App() {
                                  <ChevronRight className="w-4 h-4 text-slate-300" />
                              </div>
                          ))}
+                         {hobbies.filter(h => currentUser?.joinedHobbies.includes(h.id)).length === 0 && (
+                             <p className="text-center text-xs text-slate-400 py-4">No joined hobbies yet.</p>
+                         )}
                      </div>
                 </div>
             )}
 
+            {/* CREATE POST VIEW */}
             {view === ViewState.CREATE_POST && (
                 <div className="h-full bg-white p-6 pt-12">
                      <div className="flex justify-between items-center mb-6">
@@ -706,6 +798,7 @@ export default function App() {
                         const content = (document.getElementById('post-content') as HTMLTextAreaElement).value;
                         if (!content) return showToast("Please write something", "error");
                         if (!selectedPostHobbyId) return showToast("Please select a community", "error");
+                        
                         handleCreatePost(content, selectedPostHobbyId);
                     }}>Post Update (+20 XP)</Button>
                 </div>
@@ -715,6 +808,7 @@ export default function App() {
             {view === ViewState.SCHEDULE && (
                 <div className="px-6 pt-4 h-full flex flex-col">
                     <h1 className="text-xl font-bold mb-6">Schedule</h1>
+                    
                     <div className="flex justify-between mb-8 overflow-x-auto no-scrollbar pb-2">
                         {getWeekDays().map((date, index) => {
                             const dateStr = date.toISOString().split('T')[0];
@@ -729,6 +823,7 @@ export default function App() {
                             );
                         })}
                     </div>
+
                     <div className="flex justify-between items-end mb-4">
                         <div>
                             <h2 className="font-bold text-lg">Your Tasks</h2>
@@ -737,6 +832,7 @@ export default function App() {
                             </p>
                         </div>
                     </div>
+
                     <div className="flex-1 overflow-y-auto space-y-3 pb-24 pr-2">
                         {tasks.filter(t => t.date === selectedDate).map(task => {
                                 const taskHobby = hobbies.find(h => h.id === task.hobbyId);
@@ -767,6 +863,7 @@ export default function App() {
                             </div>
                         )}
                     </div>
+
                     <div className="absolute bottom-24 left-6 right-6">
                         <div className="bg-white p-2 rounded-2xl shadow-lg border border-slate-100 flex gap-2">
                             <input id="new-task-input" className="flex-1 pl-4 outline-none text-sm" placeholder="Add a new task..." onKeyDown={(e) => { if(e.key === 'Enter') { const input = e.currentTarget; handleAddTask(input.value, currentUser?.joinedHobbies[0]); input.value = ''; }}} />

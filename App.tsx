@@ -70,7 +70,7 @@ interface Task {
   title: string;
   date: string; // ISO Date String YYYY-MM-DD
   completed: boolean;
-  hobbyId?: string; // Optional link to a hobby
+  hobbyId?: string; 
 }
 
 // --- MOCK DATA ---
@@ -174,20 +174,42 @@ export default function App() {
   // Data
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]); // New Task State
+  const [tasks, setTasks] = useState<Task[]>([]); 
   
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]); // Default to Today
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // UI
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // --- PERSISTENCE LOGIC (Load data on start) ---
   useEffect(() => {
+    // 1. Try to load user
+    const savedUser = localStorage.getItem('hobbystreak_user');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+      setView(ViewState.FEED);
+    }
+
+    // 2. Try to load posts
+    const savedPosts = localStorage.getItem('hobbystreak_posts');
+    if (savedPosts) {
+      setPosts(JSON.parse(savedPosts));
+    } else {
+      setPosts(MOCK_POSTS);
+    }
+
+    // 3. Try to load tasks
+    const savedTasks = localStorage.getItem('hobbystreak_tasks');
+    if (savedTasks) {
+       setTasks(JSON.parse(savedTasks));
+    } else {
+       setTasks(INITIAL_TASKS);
+    }
+
     setHobbies(MOCK_HOBBIES);
-    setPosts(MOCK_POSTS);
-    setTasks(INITIAL_TASKS);
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -195,25 +217,41 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // --- HANDLERS (With Save Logic) ---
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setTimeout(() => {
-      setCurrentUser({ ...MOCK_USER, email });
+      const user = { ...MOCK_USER, email };
+      setCurrentUser(user);
+      localStorage.setItem('hobbystreak_user', JSON.stringify(user));
+      
       setView(ViewState.FEED);
       setIsLoading(false);
       showToast("Welcome back!");
     }, 800);
+  };
+  
+  const handleLogout = () => {
+      localStorage.removeItem('hobbystreak_user');
+      setCurrentUser(null);
+      setView(ViewState.LOGIN);
   };
 
   const handleJoinCommunity = (e: React.MouseEvent, hobbyId: string) => {
     e.stopPropagation();
     if (currentUser?.joinedHobbies.includes(hobbyId)) return showToast("Already joined!");
     
-    setCurrentUser(prev => prev ? {
-        ...prev,
-        joinedHobbies: [...prev.joinedHobbies, hobbyId]
-    } : null);
+    const updatedUser = currentUser ? {
+        ...currentUser,
+        joinedHobbies: [...currentUser.joinedHobbies, hobbyId]
+    } : null;
+
+    if (updatedUser) {
+        setCurrentUser(updatedUser);
+        localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
+    }
     
     setHobbies(prev => prev.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h));
     showToast("Joined Community!");
@@ -237,15 +275,23 @@ export default function App() {
         timestamp: 'Just now'
     };
     
-    setPosts([newPost, ...posts]);
-    setCurrentUser(prev => prev ? {
-        ...prev,
-        stats: {
-            ...prev.stats,
-            totalStreak: prev.stats.totalStreak + 1,
-            points: prev.stats.points + 10
-        }
-    } : null);
+    const updatedPosts = [newPost, ...posts];
+    setPosts(updatedPosts);
+    localStorage.setItem('hobbystreak_posts', JSON.stringify(updatedPosts));
+    
+    // Update User Stats
+    if (currentUser) {
+        const updatedUser = {
+            ...currentUser,
+            stats: {
+                ...currentUser.stats,
+                totalStreak: currentUser.stats.totalStreak + 1,
+                points: currentUser.stats.points + 10
+            }
+        };
+        setCurrentUser(updatedUser);
+        localStorage.setItem('hobbystreak_user', JSON.stringify(updatedUser));
+    }
 
     setView(ViewState.FEED);
     showToast("Posted! Streak +1 🔥");
@@ -253,7 +299,9 @@ export default function App() {
 
   // Schedule Functions
   const handleToggleTask = (taskId: string) => {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t));
+      const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
+      setTasks(updatedTasks);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updatedTasks));
   };
 
   const handleAddTask = (title: string, hobbyId?: string) => {
@@ -264,15 +312,18 @@ export default function App() {
           completed: false,
           hobbyId
       };
-      setTasks([...tasks, newTask]);
+      const updatedTasks = [...tasks, newTask];
+      setTasks(updatedTasks);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updatedTasks));
       showToast("Task added");
   };
 
   const handleDeleteTask = (taskId: string) => {
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      const updatedTasks = tasks.filter(t => t.id !== taskId);
+      setTasks(updatedTasks);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updatedTasks));
   };
 
-  // Helper to generate the next 7 days
   const getWeekDays = () => {
       const days = [];
       const today = new Date();
@@ -487,7 +538,7 @@ export default function App() {
                 <div className="px-6 pt-4">
                      <div className="flex justify-between items-center mb-8">
                         <h1 className="text-xl font-bold">Profile</h1>
-                        <button onClick={() => setView(ViewState.LOGIN)} className="text-red-500"><LogOut className="w-5 h-5" /></button>
+                        <button onClick={handleLogout} className="text-red-500"><LogOut className="w-5 h-5" /></button>
                      </div>
                      <div className="text-center mb-8">
                          <div className="w-24 h-24 rounded-full bg-slate-200 mx-auto mb-4 overflow-hidden border-4 border-white shadow-lg">
@@ -598,7 +649,7 @@ export default function App() {
                                 return (
                                     <div key={task.id} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-3 group">
                                         <button onClick={() => handleToggleTask(task.id)} className={`transition-colors ${task.completed ? 'text-green-500' : 'text-slate-200 hover:text-slate-300'}`}>
-                                            {task.completed ? <CheckCircle className="w-6 h-6" fill="currentColor" className="text-green-100" /> : <Circle className="w-6 h-6" />}
+                                            {task.completed ? <CheckCircle className="w-6 h-6 text-green-100" fill="currentColor" /> : <Circle className="w-6 h-6" />}
                                         </button>
                                         <div className="flex-1">
                                             <p className={`text-sm font-medium transition-all ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{task.title}</p>

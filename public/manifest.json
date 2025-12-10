@@ -1,0 +1,20 @@
+{
+  "name": "Hobbystreak",
+  "short_name": "Streak",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/avataaars/svg?seed=icon",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/avataaars/svg?seed=icon",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

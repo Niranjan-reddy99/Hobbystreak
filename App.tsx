@@ -46,6 +46,38 @@ export default function App() {
 
     fetchPublicHobbies();
   }, [user]);
+  // ------------------------------------------------
+// ✅ FETCH COMMUNITIES FROM SUPABASE
+// ------------------------------------------------
+useEffect(() => {
+  if (!user) return;
+
+  const loadHobbies = async () => {
+    const { data, error } = await supabase
+      .from("hobbies")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setHobbies(
+        data.map((h: any) => ({
+          id: h.id,
+          name: h.name,
+          description: h.description,
+          category: h.category,
+          memberCount: h.member_count ?? 0,
+          image: h.image_url || "",
+          icon: h.icon || "✨",
+        }))
+      );
+    } else {
+      console.error("Failed to load hobbies:", error);
+    }
+  };
+
+  loadHobbies();
+}, [user]);
+
 
   const fetchPublicHobbies = async () => {
     const { data, error } = await supabase

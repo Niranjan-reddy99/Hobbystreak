@@ -137,6 +137,9 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
+  // NEW: State for selected community in "Create Post"
+  const [selectedPostHobbyId, setSelectedPostHobbyId] = useState<string>('');
+
   // UI
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -177,6 +180,13 @@ export default function App() {
     initData();
   }, []);
 
+  // Set default selected hobby when entering Create Post screen
+  useEffect(() => {
+      if (view === ViewState.CREATE_POST && currentUser?.joinedHobbies.length && !selectedPostHobbyId) {
+          setSelectedPostHobbyId(currentUser.joinedHobbies[0]);
+      }
+  }, [view, currentUser]);
+
   const fetchUserHobbies = async (userId: string) => {
       if (!supabase) return;
       const { data: joinedData } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', userId);
@@ -188,7 +198,6 @@ export default function App() {
 
   const fetchLeaderboard = async () => {
       if (!supabase) return;
-      // Note: In production, sort via SQL. For MVP, sort in JS.
       const { data: profiles } = await supabase.from('profiles').select('*');
       
       if (profiles) {
@@ -327,11 +336,12 @@ export default function App() {
         // 2. Auto-Join in DB
         await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
         
-        // 3. FIXED: INSTANTLY update Local State so user can post immediately
-        setCurrentUser(prev => prev ? { 
-            ...prev, 
-            joinedHobbies: [...prev.joinedHobbies, data.id] 
-        } : null);
+        // 3. INSTANTLY update Local State so user can post immediately
+        const newJoinedList = [...currentUser.joinedHobbies, data.id];
+        setCurrentUser(prev => prev ? { ...prev, joinedHobbies: newJoinedList } : null);
+        
+        // Update selected hobby so Create Post is ready
+        setSelectedPostHobbyId(data.id);
 
         // 4. Refresh global lists
         await fetchHobbiesAndPosts();
@@ -348,7 +358,7 @@ export default function App() {
     e.stopPropagation();
     if (!supabase || !currentUser) return showToast("Please log in");
     
-    // FIXED: Prevent "Already joined" error by checking local state first
+    // Check local state first
     if (currentUser.joinedHobbies.includes(hobbyId)) {
         return showToast("Already joined!");
     }
@@ -356,8 +366,11 @@ export default function App() {
     const { error } = await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
 
     if (!error) {
-        // FIXED: Instantly update local state
-        setCurrentUser(prev => prev ? { ...prev, joinedHobbies: [...prev.joinedHobbies, hobbyId] } : null);
+        // Instantly update local state
+        const newJoinedList = [...currentUser.joinedHobbies, hobbyId];
+        setCurrentUser(prev => prev ? { ...prev, joinedHobbies: newJoinedList } : null);
+        setSelectedPostHobbyId(hobbyId); // Auto select new hobby for posting
+        
         showToast("Joined Community!");
     } else {
         // Graceful error handling
@@ -379,6 +392,7 @@ export default function App() {
 
   const handleCreatePost = async (content: string, hobbyId: string) => {
     if (!supabase || !currentUser) return;
+    if (!hobbyId) return showToast("Please select a community", "error");
     
     const { error } = await supabase.from('posts').insert({
         user_id: currentUser.id,
@@ -587,7 +601,6 @@ export default function App() {
                         ))}
                     </div>
 
-                    {/* REAL LEADERBOARD */}
                     <div className="mb-8">
                         <h2 className="text-sm font-bold text-slate-400 uppercase mb-3 tracking-wider">Top Streakers</h2>
                         <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
@@ -780,7 +793,11 @@ export default function App() {
                         <p className="text-xs font-bold text-slate-400 uppercase mb-2">Select Community</p>
                         <div className="flex gap-2 overflow-x-auto pb-2">
                              {hobbies.filter(h => currentUser?.joinedHobbies.includes(h.id)).map(h => (
-                                 <button key={h.id} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap">
+                                 <button 
+                                    key={h.id} 
+                                    onClick={() => setSelectedPostHobbyId(h.id)}
+                                    className={`border px-3 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap transition-colors ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                                 >
                                      <span>{h.icon}</span> {h.name}
                                  </button>
                              ))}
@@ -791,9 +808,10 @@ export default function App() {
                     </div>
                     <Button className="w-full mt-8" onClick={() => {
                         const content = (document.getElementById('post-content') as HTMLTextAreaElement).value;
-                        const firstHobby = currentUser?.joinedHobbies[0];
-                        if (firstHobby) handleCreatePost(content, firstHobby);
-                        else showToast("Please join a community first!", "error");
+                        if (!content) return showToast("Please write something", "error");
+                        if (!selectedPostHobbyId) return showToast("Please select a community", "error");
+                        
+                        handleCreatePost(content, selectedPostHobbyId);
                     }}>Post Update (+20 XP)</Button>
                 </div>
             )}

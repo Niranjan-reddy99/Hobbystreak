@@ -49,9 +49,9 @@ export default function App() {
 
   const fetchPublicHobbies = async () => {
     const { data, error } = await supabase
-      .from("hobbies")
-      .select("*")
-      .order("created_at", { ascending: false });
+  .from("hobbies")
+  .select("*");     // ✅ DO NOT ORDER BY created_at
+
 
     if (error) {
       console.error("Fetch error:", error.message);

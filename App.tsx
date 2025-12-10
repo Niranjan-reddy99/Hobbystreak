@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Home, Compass, User as UserIcon, Plus, Heart, MessageCircle, 
-  Sparkles, Send, Check, ArrowLeft, X, LogOut, Flame, Calendar, 
-  Bell, MoreHorizontal, Loader2, Image as ImageIcon
+  Send, Check, ArrowLeft, X, LogOut, Flame, Calendar, 
+  Bell, Loader2, Signal, Wifi, Battery
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -19,7 +19,7 @@ const supabase = isSupabaseConfigured
 // --- TYPES ---
 enum ViewState {
   LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, 
-  CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS
+  CREATE_HOBBY, CREATE_POST
 }
 
 enum HobbyCategory {
@@ -34,13 +34,7 @@ interface User {
   name: string;
   email: string;
   avatar: string;
-  bio: string;
   joinedHobbies: string[];
-  hobbyStreaks: Record<string, number>;
-  stats: {
-    streak: number;
-    totalPoints: number;
-  };
 }
 
 interface Hobby {
@@ -49,7 +43,6 @@ interface Hobby {
   description: string;
   category: HobbyCategory;
   memberCount: number;
-  image: string;
   icon: string;
 }
 
@@ -58,10 +51,8 @@ interface Post {
   userId: string;
   hobbyId: string;
   content: string;
-  imageUrl?: string;
   likes: number;
   comments: string[];
-  timestamp: string;
   authorName: string;
   authorAvatar?: string;
 }
@@ -74,7 +65,6 @@ const MOCK_HOBBIES: Hobby[] = [
     description: 'Start your day with mindfulness.',
     category: HobbyCategory.FITNESS,
     memberCount: 1240,
-    image: 'https://images.unsplash.com/photo-1544367563-12123d895951?auto=format&fit=crop&w=800&q=80',
     icon: '🧘‍♀️'
   },
   {
@@ -83,7 +73,6 @@ const MOCK_HOBBIES: Hobby[] = [
     description: 'Creating retro-style digital art.',
     category: HobbyCategory.CREATIVE,
     memberCount: 850,
-    image: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=800&q=80',
     icon: '👾'
   }
 ];
@@ -96,7 +85,6 @@ const MOCK_POSTS: Post[] = [
     content: 'Held the crow pose for 10 seconds! Progress.',
     likes: 42,
     comments: ['Great job!'],
-    timestamp: new Date().toISOString(),
     authorName: 'Sarah J.',
     authorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah'
   }
@@ -107,442 +95,237 @@ const MOCK_USER: User = {
   name: 'Demo User',
   email: 'demo@example.com',
   avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Demo',
-  bio: 'Just here to build good habits.',
-  joinedHobbies: ['h1'],
-  hobbyStreaks: { 'h1': 5 },
-  stats: { streak: 5, totalPoints: 120 }
+  joinedHobbies: ['h1']
 };
 
-// --- SUB-COMPONENTS (Defined Outside App to fix Focus Bug) ---
+// --- COMPONENTS ---
 
-const Toast = ({ message, type = 'success', onClose }: { message: string, type?: 'success' | 'error', onClose: () => void }) => (
-  <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
+const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
+  <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
     <span className="text-sm font-medium">{message}</span>
   </div>
 );
 
-const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled, isLoading, type = 'button' }: any) => {
-  const baseStyle = "px-4 py-3 rounded-2xl font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, disabled, isLoading }: any) => {
+  const baseStyle = "px-4 py-3 rounded-2xl font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50";
   const variants = {
-    primary: "bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20",
-    secondary: "bg-white text-slate-900 border border-slate-200 hover:bg-slate-50",
-    ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100"
+    primary: "bg-slate-900 text-white shadow-lg shadow-slate-900/20",
+    secondary: "bg-white text-slate-900 border border-slate-200",
   };
 
   return (
-    <button type={type} onClick={onClick} disabled={disabled || isLoading} className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${className}`}>
+    <button onClick={onClick} disabled={disabled || isLoading} className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${className}`}>
       {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : Icon && <Icon className="w-5 h-5" />}
       {children}
     </button>
   );
 };
 
-// Modal Components must be outside App to use useState correctly
-const CreatePostModal = ({ onClose, onSubmit, hobbies, currentUser, isLoading }: any) => {
-    const [content, setContent] = useState('');
-    const [selectedHobbyId, setSelectedHobbyId] = useState(currentUser?.joinedHobbies[0] || '');
-
-    return (
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-        <div className="bg-white w-full max-w-lg rounded-3xl p-6 animate-slide-up">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">New Post</h2>
-            <button onClick={onClose}><X className="w-6 h-6 text-slate-400" /></button>
-          </div>
-          <div className="mb-4">
-              <select 
-                value={selectedHobbyId}
-                onChange={(e) => setSelectedHobbyId(e.target.value)}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl"
-              >
-                  {hobbies.filter((h: Hobby) => currentUser.joinedHobbies.includes(h.id)).map((h: Hobby) => (
-                      <option key={h.id} value={h.id}>{h.icon} {h.name}</option>
-                  ))}
-              </select>
-          </div>
-          <textarea 
-            className="w-full h-32 p-4 bg-slate-50 border border-slate-200 rounded-2xl resize-none focus:outline-none mb-4"
-            placeholder="Share your progress..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-          ></textarea>
-          <Button onClick={() => onSubmit(content, selectedHobbyId)} isLoading={isLoading}>
-              Post <Send className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-    );
-};
-
-const CreateHobbyModal = ({ onClose, onSubmit, isLoading }: any) => {
-    const [name, setName] = useState('');
-    const [desc, setDesc] = useState('');
-    const [cat, setCat] = useState<HobbyCategory>(HobbyCategory.FITNESS);
-
-    return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl p-6 w-full max-w-md">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Create Community</h3>
-                    <button onClick={onClose}><X className="w-6 h-6" /></button>
-                </div>
-                <div className="space-y-4">
-                    <input className="w-full p-3 border rounded-xl" placeholder="Community Name" value={name} onChange={e => setName(e.target.value)} />
-                    <textarea className="w-full p-3 border rounded-xl" placeholder="Description" value={desc} onChange={e => setDesc(e.target.value)} />
-                    <select className="w-full p-3 border rounded-xl" value={cat} onChange={e => setCat(e.target.value as HobbyCategory)}>
-                        {Object.values(HobbyCategory).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <Button className="w-full" isLoading={isLoading} onClick={() => onSubmit(name, desc, cat)}>Create</Button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 // --- MAIN APP ---
 
 export default function App() {
-  // --- State ---
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   
-  // Data State
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-  
-  // UI State
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDbConnected, setIsDbConnected] = useState(false);
 
-  // Initialize Data
   useEffect(() => {
-    const initApp = async () => {
-      setIsLoading(true);
-      if (supabase) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-             setIsDbConnected(true);
-             setCurrentUser({ ...MOCK_USER, id: session.user.id, email: session.user.email || '' });
-             setView(ViewState.FEED);
-          }
-          await fetchPublicData();
-        } catch (error) {
-          useMockData();
-        }
-      } else {
-        useMockData();
-      }
-      setIsLoading(false);
-    };
-    initApp();
-  }, []);
-
-  const useMockData = () => {
+    // Init Logic
     setHobbies(MOCK_HOBBIES);
     setPosts(MOCK_POSTS);
-    setIsDbConnected(false);
-  };
-
-  const fetchPublicData = async () => {
-    if (!supabase) return;
-    try {
-      const { data: hobbiesData } = await supabase.from('hobbies').select('*');
-      if (hobbiesData) setHobbies(hobbiesData as any);
-      const { data: postsData } = await supabase.from('posts').select(`*, profiles:user_id(full_name, avatar_url)`);
-      if (postsData) {
-         setPosts(postsData.map((p: any) => ({
-             id: p.id,
-             userId: p.user_id,
-             hobbyId: p.hobby_id,
-             content: p.content,
-             imageUrl: p.image_url,
-             likes: p.likes_count || 0,
-             comments: [],
-             timestamp: p.created_at,
-             authorName: p.profiles?.full_name || 'Unknown',
-             authorAvatar: p.profiles?.avatar_url
-         })));
-      }
-    } catch (e) { useMockData(); }
-  };
+  }, []);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  // --- Handlers ---
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    if (!isDbConnected || !supabase) {
-      setTimeout(() => {
-        setIsLoading(false);
-        setCurrentUser(MOCK_USER);
-        setView(ViewState.FEED);
-        showToast(`Welcome back, ${MOCK_USER.name}!`);
-      }, 1000);
-      return;
-    }
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      showToast("Logged in successfully!");
-      setCurrentUser({ ...MOCK_USER, email }); 
+    setTimeout(() => {
+      setCurrentUser({ ...MOCK_USER, email });
       setView(ViewState.FEED);
-    } catch (err: any) { showToast(err.message, 'error'); } 
-    finally { setIsLoading(false); }
-  };
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    if (!isDbConnected || !supabase) {
-       setTimeout(() => {
-         setIsLoading(false);
-         setView(ViewState.ONBOARDING);
-         showToast("Mock Account Created");
-       }, 1000);
-       return;
-    }
-    try {
-      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } });
-      if (error) throw error;
-      showToast("Account created!");
-      if (data.session) setView(ViewState.ONBOARDING);
-    } catch (err: any) { showToast(err.message, 'error'); } 
-    finally { setIsLoading(false); }
-  };
-
-  const handleCreateHobby = async (hobbyName: string, description: string, category: string) => {
-    setIsLoading(true);
-    const newHobby: Hobby = {
-        id: `h${Date.now()}`,
-        name: hobbyName,
-        description,
-        category: category as HobbyCategory,
-        memberCount: 1,
-        image: `https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=800&q=80`,
-        icon: '🌟'
-    };
-    setHobbies([...hobbies, newHobby]);
-    if (currentUser) {
-        setCurrentUser({ ...currentUser, joinedHobbies: [...currentUser.joinedHobbies, newHobby.id] });
-    }
-    showToast("Community created!");
-    setIsLoading(false);
-    setView(ViewState.EXPLORE);
-  };
-
-  const handleJoinCommunity = (hobbyId: string) => {
-     if (!currentUser) return showToast("Please log in to join.", 'error');
-     if (currentUser.joinedHobbies.includes(hobbyId)) return showToast("Already a member!");
-     setCurrentUser({ ...currentUser, joinedHobbies: [...currentUser.joinedHobbies, hobbyId] });
-     setHobbies(prev => prev.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h));
-     showToast("Joined successfully!");
+      setIsLoading(false);
+      showToast("Welcome back!");
+    }, 800);
   };
 
   const handleCreatePost = (content: string, hobbyId: string) => {
-      if (!currentUser) return;
-      setIsLoading(true);
-      const newPost: Post = {
+    const newPost = {
         id: `p${Date.now()}`,
-        userId: currentUser.id,
+        userId: currentUser!.id,
         hobbyId,
         content,
         likes: 0,
         comments: [],
-        timestamp: new Date().toISOString(),
-        authorName: currentUser.name,
-        authorAvatar: currentUser.avatar
-      };
-      setTimeout(() => {
-        setPosts([newPost, ...posts]);
-        showToast("Posted successfully!");
-        setIsLoading(false);
-        setView(ViewState.FEED);
-      }, 800);
+        authorName: currentUser!.name,
+        authorAvatar: currentUser!.avatar
+    };
+    setPosts([newPost, ...posts]);
+    setView(ViewState.FEED);
+    showToast("Posted!");
   };
 
-  const handleLogout = async () => {
-      if (supabase) await supabase.auth.signOut();
-      setCurrentUser(null);
-      setView(ViewState.LOGIN);
-  };
+  // --- RENDER HELPERS ---
+
+  // Status Bar (Visual only)
+  const StatusBar = () => (
+    <div className="flex justify-between items-center px-6 py-3 bg-slate-50 text-slate-900 text-xs font-bold sticky top-0 z-20">
+        <span>9:41</span>
+        <div className="flex gap-2">
+            <Signal className="w-4 h-4" />
+            <Wifi className="w-4 h-4" />
+            <Battery className="w-4 h-4" />
+        </div>
+    </div>
+  );
 
   return (
-    <>
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    // OUTER BACKGROUND (Desktop Context)
+    <div className="min-h-screen bg-neutral-900 flex items-center justify-center font-sans p-0 sm:p-8">
       
-      {/* --- VIEWS --- */}
-      
-      {view === ViewState.LOGIN && (
-        <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-900 rounded-3xl mb-4 shadow-xl">
-              <Flame className="w-8 h-8 text-white" fill="currentColor" />
-            </div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Hobbystreak</h1>
-            <p className="text-slate-500">Track habits. Join communities.</p>
-          </div>
-          
-          {!isDbConnected && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl text-sm text-blue-800">
-               <p className="font-bold">Demo Mode Active</p>
-               <p>Database not connected. Changes are local only.</p>
-            </div>
-          )}
+      {/* PHONE FRAME */}
+      <div className="w-full max-w-[400px] h-[100dvh] sm:h-[850px] bg-slate-50 sm:rounded-[40px] shadow-2xl overflow-hidden relative flex flex-col border-0 sm:border-[8px] border-neutral-800 ring-1 ring-white/10">
+        
+        <StatusBar />
+        
+        {toast && <Toast message={toast.message} type={toast.type} />}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full p-4 bg-white border border-slate-200 rounded-2xl"
-            />
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              className="w-full p-4 bg-white border border-slate-200 rounded-2xl"
-            />
-            <Button type="submit" className="w-full mt-4" isLoading={isLoading}>Sign In</Button>
-          </form>
-          <p className="text-center mt-8 text-slate-500 text-sm">
-            New here? <button onClick={() => setView(ViewState.REGISTER)} className="font-bold text-slate-900">Create an account</button>
-          </p>
-        </div>
-      )}
+        {/* CONTENT AREA (Scrollable) */}
+        <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+            
+            {view === ViewState.LOGIN && (
+                <div className="h-full flex flex-col justify-center px-8">
+                    <div className="text-center mb-10">
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-900 rounded-3xl mb-4 shadow-xl">
+                            <Flame className="w-8 h-8 text-white" fill="currentColor" />
+                        </div>
+                        <h1 className="text-2xl font-bold text-slate-900">Hobbystreak</h1>
+                    </div>
+                    <form onSubmit={handleLogin} className="space-y-4">
+                        <input className="w-full p-4 bg-white rounded-2xl border-none shadow-sm" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+                        <input className="w-full p-4 bg-white rounded-2xl border-none shadow-sm" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+                        <Button type="submit" className="w-full" isLoading={isLoading}>Sign In</Button>
+                    </form>
+                    <button onClick={() => setView(ViewState.REGISTER)} className="mt-6 text-sm text-slate-400">Create Account</button>
+                </div>
+            )}
 
-      {view === ViewState.REGISTER && (
-        <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
-          <button onClick={() => setView(ViewState.LOGIN)} className="absolute top-8 left-8 p-2 bg-white rounded-full shadow-sm">
-            <ArrowLeft className="w-6 h-6 text-slate-900" />
-          </button>
-          <div className="mb-8"><h1 className="text-3xl font-bold text-slate-900 mb-2">Create Account</h1></div>
-          <form onSubmit={handleRegister} className="space-y-4">
-            <input 
-              type="text" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Full Name"
-              className="w-full p-4 bg-white border border-slate-200 rounded-2xl"
-            />
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full p-4 bg-white border border-slate-200 rounded-2xl"
-            />
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              className="w-full p-4 bg-white border border-slate-200 rounded-2xl"
-            />
-            <Button type="submit" className="w-full mt-4" isLoading={isLoading}>Create Account</Button>
-          </form>
-        </div>
-      )}
+            {view === ViewState.REGISTER && (
+                <div className="h-full flex flex-col justify-center px-8">
+                    <button onClick={() => setView(ViewState.LOGIN)} className="absolute top-12 left-6 p-2 bg-white rounded-full"><ArrowLeft className="w-5 h-5" /></button>
+                    <h1 className="text-2xl font-bold mb-6">Join Us</h1>
+                    <div className="space-y-4">
+                        <input className="w-full p-4 bg-white rounded-2xl shadow-sm" placeholder="Name" value={name} onChange={e => setName(e.target.value)} />
+                        <input className="w-full p-4 bg-white rounded-2xl shadow-sm" placeholder="Email" />
+                        <input className="w-full p-4 bg-white rounded-2xl shadow-sm" type="password" placeholder="Password" />
+                        <Button className="w-full" onClick={() => { showToast("Account Created"); setView(ViewState.ONBOARDING); }}>Sign Up</Button>
+                    </div>
+                </div>
+            )}
 
-      {view === ViewState.ONBOARDING && (
-        <div className="p-10 text-center pt-24">
-            <h1 className="text-2xl font-bold mb-4">Welcome!</h1>
-            <Button onClick={() => setView(ViewState.EXPLORE)}>Start Exploring</Button>
-        </div>
-      )}
+            {view === ViewState.ONBOARDING && (
+                <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+                    <h1 className="text-2xl font-bold mb-2">Welcome! 🎉</h1>
+                    <p className="text-slate-500 mb-8">Let's find your new hobby.</p>
+                    <Button onClick={() => setView(ViewState.EXPLORE)}>Start Exploring</Button>
+                </div>
+            )}
 
-      {view === ViewState.FEED && (
-        <div className="pb-24 pt-8 px-6 bg-slate-50 min-h-screen">
-          <div className="flex justify-between items-center mb-6">
-              <h1 className="text-xl font-bold text-slate-900">Hello, {currentUser?.name.split(' ')[0]}</h1>
-              <div className="flex gap-2">
-                 <button className="p-2 bg-white rounded-full shadow-sm"><Bell className="w-5 h-5" /></button>
-              </div>
-          </div>
-          <div className="space-y-6">
-             {posts.map(post => {
-                 const hobby = hobbies.find(h => h.id === post.hobbyId);
-                 return (
-                     <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden">
-                                <img src={post.authorAvatar} alt="avatar" className="w-full h-full object-cover" />
+            {view === ViewState.FEED && (
+                <div className="px-6 pt-4">
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-xl font-bold">Home</h1>
+                        <button className="p-2 bg-white rounded-full shadow-sm"><Bell className="w-5 h-5" /></button>
+                    </div>
+                    <div className="space-y-4">
+                        {posts.map(post => (
+                            <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <img src={post.authorAvatar} className="w-10 h-10 rounded-full" />
+                                    <div>
+                                        <p className="font-bold text-sm">{post.authorName}</p>
+                                        <p className="text-xs text-slate-400">2h ago</p>
+                                    </div>
+                                </div>
+                                <p className="text-sm text-slate-800 mb-3">{post.content}</p>
+                                <div className="flex gap-4 text-slate-400">
+                                    <div className="flex items-center gap-1 text-xs"><Heart className="w-4 h-4" /> {post.likes}</div>
+                                    <div className="flex items-center gap-1 text-xs"><MessageCircle className="w-4 h-4" /> {post.comments.length}</div>
+                                </div>
                             </div>
-                            <div className="flex-1">
-                                <p className="font-bold text-sm">{post.authorName}</p>
-                                <p className="text-xs text-slate-400">{hobby?.icon} {hobby?.name}</p>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {view === ViewState.EXPLORE && (
+                <div className="px-6 pt-4">
+                    <h1 className="text-xl font-bold mb-6">Explore</h1>
+                    <div className="space-y-4">
+                        {hobbies.map(h => (
+                            <div key={h.id} className="bg-white p-4 rounded-2xl flex items-center gap-4 shadow-sm">
+                                <div className="text-3xl">{h.icon}</div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-sm">{h.name}</h3>
+                                    <p className="text-xs text-slate-500">{h.memberCount} members</p>
+                                </div>
+                                <Button variant="secondary" className="text-xs py-2 h-auto" onClick={() => showToast("Joined!")}>Join</Button>
                             </div>
-                         </div>
-                         <p className="text-slate-800 mb-4">{post.content}</p>
-                         <div className="flex items-center gap-6 pt-2 border-t border-slate-50">
-                             <button className="flex items-center gap-2 text-slate-400"><Heart className="w-5 h-5" /> <span className="text-xs">{post.likes}</span></button>
-                             <button className="flex items-center gap-2 text-slate-400"><MessageCircle className="w-5 h-5" /> <span className="text-xs">{post.comments.length}</span></button>
-                         </div>
-                     </div>
-                 );
-             })}
-          </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {view === ViewState.CREATE_POST && (
+                <div className="h-full bg-white p-6 pt-12">
+                     <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold">New Post</h2>
+                        <button onClick={() => setView(ViewState.FEED)}><X className="w-6 h-6" /></button>
+                    </div>
+                    <textarea 
+                        className="w-full h-40 bg-slate-50 p-4 rounded-2xl resize-none outline-none" 
+                        placeholder="What did you achieve today?"
+                        id="post-content"
+                    />
+                    <Button className="w-full mt-4" onClick={() => {
+                        const content = (document.getElementById('post-content') as HTMLTextAreaElement).value;
+                        handleCreatePost(content, 'h1');
+                    }}>Post</Button>
+                </div>
+            )}
+
+            {view === ViewState.SCHEDULE && (
+                <div className="h-full flex items-center justify-center text-slate-400">
+                    <div className="text-center">
+                        <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p>Schedule coming soon</p>
+                    </div>
+                </div>
+            )}
         </div>
-      )}
 
-      {view === ViewState.EXPLORE && (
-        <div className="pb-24 pt-8 px-6 bg-slate-50 min-h-screen">
-          <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold">Explore</h1>
-              <Button onClick={() => setView(ViewState.CREATE_HOBBY)} icon={Plus}>Create</Button>
-          </div>
-          <div className="grid gap-4">
-              {hobbies.map(hobby => (
-                  <div key={hobby.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                      <div className="text-3xl">{hobby.icon}</div>
-                      <div className="flex-1">
-                          <h3 className="font-bold">{hobby.name}</h3>
-                          <p className="text-xs text-slate-500">{hobby.memberCount} members</p>
-                      </div>
-                      <Button variant="secondary" className="text-xs py-2 px-3" onClick={() => handleJoinCommunity(hobby.id)}>
-                          {currentUser?.joinedHobbies.includes(hobby.id) ? 'Joined' : 'Join'}
-                      </Button>
-                  </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* --- MODALS --- */}
-      {view === ViewState.CREATE_HOBBY && (
-          <CreateHobbyModal onClose={() => setView(ViewState.EXPLORE)} onSubmit={handleCreateHobby} isLoading={isLoading} />
-      )}
-
-      {view === ViewState.CREATE_POST && (
-          <CreatePostModal onClose={() => setView(ViewState.FEED)} onSubmit={handleCreatePost} hobbies={hobbies} currentUser={currentUser} isLoading={isLoading} />
-      )}
-
-      {view === ViewState.SCHEDULE && <div className="min-h-screen pt-10 text-center bg-slate-50">Schedule Feature Coming Soon</div>}
-
-      {/* --- NAVIGATION --- */}
-      {![ViewState.LOGIN, ViewState.REGISTER].includes(view) && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-xl border border-white/50 shadow-2xl rounded-full px-6 py-4 flex items-center gap-8 z-40">
-            <button onClick={() => setView(ViewState.FEED)} className={view === ViewState.FEED ? 'text-slate-900' : 'text-slate-300'}><Home /></button>
-            <button onClick={() => setView(ViewState.EXPLORE)} className={view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-300'}><Compass /></button>
-            <div className="relative -top-6">
-                <button onClick={() => setView(ViewState.CREATE_POST)} className="w-14 h-14 bg-slate-900 rounded-full shadow-lg flex items-center justify-center text-white"><Plus /></button>
+        {/* BOTTOM NAVIGATION (Absolute within Phone Frame) */}
+        {![ViewState.LOGIN, ViewState.REGISTER, ViewState.ONBOARDING].includes(view) && (
+            <div className="absolute bottom-6 left-6 right-6">
+                <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
+                    <button onClick={() => setView(ViewState.FEED)} className={view === ViewState.FEED ? 'text-slate-900' : 'text-slate-300'}><Home className="w-6 h-6" /></button>
+                    <button onClick={() => setView(ViewState.EXPLORE)} className={view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-300'}><Compass className="w-6 h-6" /></button>
+                    <button onClick={() => setView(ViewState.CREATE_POST)} className="bg-slate-900 text-white p-3 rounded-full shadow-lg -mt-8 border-4 border-slate-50"><Plus className="w-6 h-6" /></button>
+                    <button onClick={() => setView(ViewState.SCHEDULE)} className={view === ViewState.SCHEDULE ? 'text-slate-900' : 'text-slate-300'}><Calendar className="w-6 h-6" /></button>
+                    <button onClick={() => setView(ViewState.LOGIN)} className="text-slate-300 hover:text-red-500"><LogOut className="w-6 h-6" /></button>
+                </div>
             </div>
-            <button onClick={() => setView(ViewState.SCHEDULE)} className={view === ViewState.SCHEDULE ? 'text-slate-900' : 'text-slate-300'}><Calendar /></button>
-            <button onClick={handleLogout} className="text-slate-300 hover:text-red-500"><LogOut /></button>
-        </div>
-      )}
-    </>
+        )}
+      </div>
+    </div>
   );
 }

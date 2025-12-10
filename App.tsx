@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
+/* ------------------------------------------------ */
+
 type Hobby = {
   id: string;
   name: string;
   description: string;
   category: string;
 };
+
+/* ------------------------------------------------ */
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -15,9 +19,10 @@ export default function App() {
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // ------------------------------------------------
-  // AUTH LISTENER
-  // ------------------------------------------------
+  /* ------------------------------------------------ */
+  /* AUTH LISTENER */
+  /* ------------------------------------------------ */
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user ?? null);
@@ -32,67 +37,86 @@ export default function App() {
     return () => auth.subscription.unsubscribe();
   }, []);
 
-  // ------------------------------------------------
-  // FETCH COMMUNITIES
-  // ------------------------------------------------
+  /* ------------------------------------------------ */
+  /* FETCH COMMUNITIES */
+  /* ------------------------------------------------ */
+
   useEffect(() => {
     if (!user) return;
 
-    const loadHobbies = async () => {
-      const { data, error } = await supabase
-        .from("hobbies")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (!error && data) {
-        setHobbies(data);
-      }
-    };
-
-    loadHobbies();
+    fetchPublicHobbies();
   }, [user]);
 
-  // ------------------------------------------------
-  // LOGIN
-  // ------------------------------------------------
+  const fetchPublicHobbies = async () => {
+    const { data, error } = await supabase
+      .from("hobbies")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Fetch error:", error.message);
+      return;
+    }
+
+    if (data) {
+      setHobbies(data);
+    }
+  };
+
+  /* ------------------------------------------------ */
+  /* LOGIN */
+  /* ------------------------------------------------ */
+
   const handleLogin = async (e: any) => {
     e.preventDefault();
     setLoading(true);
 
-    await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
+    if (error) {
+      alert(error.message);
+    }
+
     setLoading(false);
   };
 
-  // ------------------------------------------------
-  // LOGOUT
-  // ------------------------------------------------
+  /* ------------------------------------------------ */
+  /* LOGOUT */
+  /* ------------------------------------------------ */
+
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
   };
 
-  // ------------------------------------------------
-  // JOIN COMMUNITY
-  // ------------------------------------------------
+  /* ------------------------------------------------ */
+  /* JOIN COMMUNITY */
+  /* ------------------------------------------------ */
+
   const joinCommunity = async (hobbyId: string) => {
     if (!user) return;
 
-    await supabase.from("user_hobbies").insert({
+    const { error } = await supabase.from("user_hobbies").insert({
       user_id: user.id,
       hobby_id: hobbyId,
       streak: 0,
     });
 
-    alert("✅ Joined!");
+    if (error) {
+      alert("Join failed: " + error.message);
+      return;
+    }
+
+    alert("✅ Joined community!");
   };
 
-  // ------------------------------------------------
-  // LOGIN VIEW
-  // ------------------------------------------------
+  /* ------------------------------------------------ */
+  /* LOGIN VIEW */
+  /* ------------------------------------------------ */
+
   if (!user) {
     return (
       <div style={styles.page}>
@@ -102,6 +126,7 @@ export default function App() {
           <input
             style={styles.input}
             placeholder="Email"
+            autoComplete="off"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -109,6 +134,7 @@ export default function App() {
           <input
             style={styles.input}
             placeholder="Password"
+            autoComplete="off"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -122,9 +148,10 @@ export default function App() {
     );
   }
 
-  // ------------------------------------------------
-  // COMMUNITY VIEW
-  // ------------------------------------------------
+  /* ------------------------------------------------ */
+  /* COMMUNITY VIEW */
+  /* ------------------------------------------------ */
+
   return (
     <div style={styles.page}>
       <h2>Communities</h2>

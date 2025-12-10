@@ -1,449 +1,218 @@
-import React, { useEffect, useState } from "react";
-import {
-  HomeIcon,
-  CompassIcon,
-  UserIcon,
-  PlusIcon,
-  HeartIcon,
-  MessageCircleIcon,
-  SparklesIcon,
-  SendIcon,
-  CheckIcon,
-  ArrowLeftIcon,
-  ImageIcon,
-  LogOutIcon,
-  GoogleIcon,
-  AppleIcon,
-  CalendarIcon,
-  LoaderIcon,
-  SettingsIcon,
-  BellIcon,
-  MoreHorizontalIcon,
-  FlameIcon,
-} from "./components/Icons";
+import React, { useState, useEffect } from "react";
+import { supabase } from "./supabaseClient";
 
-import {
-  ViewState,
-  HobbyCategory,
-  User,
-  Hobby,
-  Post,
-} from "./types";
+export default function App() {
+  const [view, setView] = useState<"login" | "register" | "feed">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-import {
-  MOCK_HOBBIES,
-  MOCK_POSTS,
-  MOCK_USERS,
-} from "./constants";
+  // ✅ Check auth session at startup
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session?.user) {
+        setUser(data.session.user);
+        setView("feed");
+      }
+    });
 
-import {
-  supabase,
-  isKeyValid,
-  isKeyFormatCorrect,
-  mapSupabaseUserToAppUser,
-} from "./supabaseClient";
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        setView("feed");
+      } else {
+        setUser(null);
+        setView("login");
+      }
+    });
 
-/* ------------------ Toast ------------------ */
-const Toast = ({ message, type = "success" }: any) => (
-  <div
-    className={`fixed top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 ${
-      type === "success"
-        ? "bg-slate-900 text-white"
-        : "bg-red-500 text-white"
-    }`}
-  >
-    {type === "success" ? (
-      <CheckIcon className="w-4 h-4" />
-    ) : (
-      <span>❌</span>
-    )}
-    <span className="text-sm">{message}</span>
-  </div>
-);
+    return () => subscription.unsubscribe();
+  }, []);
 
-/* ------------------ Button ------------------ */
-const Button = ({
-  children,
-  onClick,
-  type = "button",
-  variant = "primary",
-  disabled,
-  isLoading,
-}: any) => {
-  const base =
-    "px-4 py-3 rounded-2xl font-medium transition-all flex justify-center items-center gap-2";
-
-  const styles: any = {
-    primary:
-      "bg-slate-900 text-white hover:bg-slate-800 shadow",
-    secondary:
-      "bg-white border border-slate-200 hover:bg-slate-50",
-  };
-
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled || isLoading}
-      className={`${base} ${styles[variant]} ${
-        disabled && "opacity-50"
-      }`}
-    >
-      {isLoading && (
-        <LoaderIcon className="w-4 h-4 animate-spin" />
-      )}
-      {children}
-    </button>
-  );
-};
-
-const login = async (e: any) => {
+  // ✅ LOGIN
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setMessage("");
 
-    if (!isDbConnected) {
-      const mock = MOCK_USERS["u1"];
-      setCurrentUser(mock);
-      setView(ViewState.FEED);
-      showToast(`Welcome ${mock.name}`);
-      setLoading(false);
-      return;
-    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    try {
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      showToast("Logged in successfully");
-    } catch (err: any) {
-      showToast(err.message, "error");
-      setLoading(false);
-    }
+    if (error) setMessage(error.message);
+    setLoading(false);
   };
 
-  const register = async (e: any) => {
+  // ✅ REGISTER
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setMessage("");
 
-    try {
-      await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: name,
-          },
-        },
-      });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name } },
+    });
 
-      showToast(
-        "Registered successfully — check mail"
-      );
-      setView(ViewState.LOGIN);
-    } catch (err: any) {
-      showToast(err.message, "error");
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage("✅ Registered! Now log in.");
+      setView("login");
     }
 
     setLoading(false);
   };
 
-  const logout = async () => {
+  // ✅ LOGOUT
+  const handleLogout = async () => {
     await supabase.auth.signOut();
-    setCurrentUser(null);
-    setView(ViewState.LOGIN);
   };
 
-  /* ------------------ Views ------------------ */
+  // ---------------- UI ----------------
 
-  const LoginView = () => (
-    <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
-      <div className="text-center mb-10">
-        <div className="w-16 h-16 mx-auto bg-slate-900 rounded-3xl mb-4 flex items-center justify-center">
-          <FlameIcon className="text-white w-8 h-8" />
-        </div>
-        <h1 className="text-3xl font-bold">
-          Hobbystreak
-        </h1>
-      </div>
+  if (view === "feed") {
+    return (
+      <div style={styles.page}>
+        <h1>✅ Logged in</h1>
+        <p>{user?.email}</p>
 
-      <form onSubmit={login} className="space-y-4">
-        <input
-          value={email}
-          onChange={(e) =>
-            setEmail(e.target.value)
-          }
-          type="email"
-          placeholder="Email"
-          className="w-full p-4 border rounded-2xl"
-        />
-
-        <input
-          value={password}
-          onChange={(e) =>
-            setPassword(e.target.value)
-          }
-          type="password"
-          placeholder="Password"
-          className="w-full p-4 border rounded-2xl"
-        />
-
-        <Button
-          type="submit"
-          isLoading={loading}
-          className="w-full"
-        >
-          Login
-        </Button>
-      </form>
-
-      <p className="text-center mt-6">
-        New user?{" "}
-        <button
-          onClick={() =>
-            setView(ViewState.REGISTER)
-          }
-          className="underline"
-        >
-          Create Account
-        </button>
-      </p>
-    </div>
-  );
-
-  const RegisterView = () => (
-    <div className="min-h-screen flex flex-col justify-center px-8 bg-slate-50">
-      <button
-        className="absolute top-6 left-6"
-        onClick={() =>
-          setView(ViewState.LOGIN)
-        }
-      >
-        <ArrowLeftIcon />
-      </button>
-
-      <form
-        onSubmit={register}
-        className="space-y-4"
-      >
-        <input
-          value={name}
-          onChange={(e) =>
-            setName(e.target.value)
-          }
-          type="text"
-          placeholder="Full name"
-          className="w-full p-4 border rounded-2xl"
-        />
-
-        <input
-          value={email}
-          onChange={(e) =>
-            setEmail(e.target.value)
-          }
-          type="email"
-          placeholder="Email"
-          className="w-full p-4 border rounded-2xl"
-        />
-
-        <input
-          value={password}
-          onChange={(e) =>
-            setPassword(e.target.value)
-          }
-          type="password"
-          placeholder="Password"
-          className="w-full p-4 border rounded-2xl"
-        />
-
-        <Button
-          type="submit"
-          isLoading={loading}
-          className="w-full"
-        >
-          Create Account
-        </Button>
-      </form>
-    </div>
-  );
-
-  const FeedView = () => (
-    <div className="p-8 min-h-screen bg-slate-50">
-      <div className="flex justify-between mb-6">
-        <h1 className="font-bold text-xl">
-          Welcome {currentUser?.name}
-        </h1>
-
-        <button onClick={logout}>
-          <LogOutIcon />
+        <button style={styles.button} onClick={handleLogout}>
+          Logout
         </button>
       </div>
-
-      {posts.map((p) => (
-        <div
-          key={p.id}
-          className="p-4 bg-white mb-4 rounded-2xl border"
-        >
-          {p.content}
-        </div>
-      ))}
-    </div>
-  );
-
-/* ========================================================== */
-
-export default function App() {
-  const [view, setView] = useState<ViewState>(ViewState.LOGIN);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-
-  const [hobbies, setHobbies] = useState<Hobby[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
-
-  const [toast, setToast] = useState<any>(null);
-  const [isDbConnected, setIsDbConnected] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  /* ------------------ Init ------------------ */
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-
-      if (!isKeyValid() || !isKeyFormatCorrect()) {
-        setDbError("Supabase key invalid — running in MOCK MODE");
-        setHobbies(MOCK_HOBBIES);
-        setPosts(MOCK_POSTS);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data } =
-          await supabase.auth.getSession();
-
-        if (data?.session?.user) {
-          await fetchUserData(data.session.user);
-          setIsDbConnected(true);
-          setView(ViewState.FEED);
-        } else {
-          setIsDbConnected(true);
-          await fetchPublicData();
-        }
-      } catch (err: any) {
-        console.error(err);
-        setDbError("Failed DB connection");
-        setHobbies(MOCK_HOBBIES);
-        setPosts(MOCK_POSTS);
-      }
-
-      setLoading(false);
-    };
-
-    init();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      async (_, session) => {
-        if (session?.user)
-          await fetchUserData(session.user);
-      }
     );
+  }
 
-    return () => subscription.unsubscribe();
-  }, []);
+  if (view === "register") {
+    return (
+      <div style={styles.page}>
+        <h2>Create Account</h2>
 
-  /* ------------------ Helpers ------------------ */
-  const showToast = (
-    msg: string,
-    type: "success" | "error" = "success"
-  ) => {
-    setToast({ message: msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+        <form style={styles.form} onSubmit={handleRegister}>
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
 
-  const fetchPublicData = async () => {
-    try {
-      const { data: h } =
-        await supabase.from("hobbies").select("*");
-      if (h) setHobbies(h);
+          <input
+            style={styles.input}
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
 
-      const { data: p } =
-        await supabase.from("posts").select("*");
+          <input
+            style={styles.input}
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
 
-      if (p) setPosts(p);
-    } catch {
-      console.warn("Public fetch failed");
-    }
-  };
+          <button style={styles.button} type="submit">
+            {loading ? "Creating..." : "Create Account"}
+          </button>
+        </form>
 
-  const fetchUserData = async (sbUser: any) => {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", sbUser.id)
-      .single();
+        {message && <p style={styles.message}>{message}</p>}
 
-    const appUser =
-      mapSupabaseUserToAppUser(sbUser, profile);
+        <button style={styles.link} onClick={() => setView("login")}>
+          ← Back to Login
+        </button>
+      </div>
+    );
+  }
 
-    setCurrentUser(appUser);
-  };
-
-  /* ------------------ Auth ------------------ */
-
-  
-
-  /* ------------------ Render ------------------ */
-
+  // ✅ LOGIN VIEW
   return (
-    <>
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
+    <div style={styles.page}>
+      <h2>Log In</h2>
+
+      <form style={styles.form} onSubmit={handleLogin}>
+        <input
+          style={styles.input}
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
         />
-      )}
 
-{view === ViewState.LOGIN && (
-  <LoginView
-    email={email}
-    password={password}
-    setEmail={setEmail}
-    setPassword={setPassword}
-    login={login}
-    loading={loading}
-    setView={setView}
-  />
-)}
+        <input
+          style={styles.input}
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-{view === ViewState.REGISTER && (
-  <RegisterView
-    name={name}
-    email={email}
-    password={password}
-    setName={setName}
-    setEmail={setEmail}
-    setPassword={setPassword}
-    register={register}
-    loading={loading}
-    setView={setView}
-  />
-)}
+        <button style={styles.button} type="submit">
+          {loading ? "Logging in..." : "Login"}
+        </button>
+      </form>
 
-{view === ViewState.FEED && (
-  <FeedView
-    posts={posts}
-    currentUser={currentUser}
-    logout={logout}
-  />
-)}
+      {message && <p style={styles.message}>{message}</p>}
 
-    </>
+      <button style={styles.link} onClick={() => setView("register")}>
+        Create new account
+      </button>
+    </div>
   );
 }
+
+// ---------------- STYLES ----------------
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    padding: "32px",
+    background: "#f8fafc",
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "12px",
+    fontFamily: "Arial, sans-serif",
+  },
+  form: {
+    width: "100%",
+    maxWidth: "320px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "8px",
+  },
+  input: {
+    padding: "12px",
+    borderRadius: "6px",
+    border: "1px solid #ccc",
+    fontSize: "16px",
+  },
+  button: {
+    padding: "12px",
+    background: "#0f172a",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "16px",
+  },
+  link: {
+    background: "none",
+    border: "none",
+    color: "#2563eb",
+    cursor: "pointer",
+  },
+  message: {
+    color: "#dc2626",
+  },
+};

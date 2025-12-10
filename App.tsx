@@ -78,11 +78,6 @@ const INITIAL_TASKS: Task[] = [
     { id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' },
 ];
 
-const LEADERBOARD_USERS = [
-    { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
-    { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
-];
-
 // --- COMPONENTS ---
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
@@ -155,12 +150,13 @@ export default function App() {
         if (session) {
             const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
             
+            // Clean slate: Don't load hobbies from local storage to avoid "Ghost" mock data
             setCurrentUser({
                 id: session.user.id,
                 name: profile?.name || session.user.user_metadata.full_name || 'User',
                 email: session.user.email || '',
                 avatar: profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${session.user.id}`,
-                joinedHobbies: [], 
+                joinedHobbies: [], // Will be filled by fetchUserHobbies
                 stats: profile?.stats || { totalStreak: 0, points: 0 }
             });
             setView(ViewState.FEED);
@@ -179,11 +175,12 @@ export default function App() {
   }, []);
 
   // --- AUTO-SELECT COMMUNITY FOR POSTING ---
-  // This ensures that as soon as you have joined communities, one is selected
   useEffect(() => {
-      if (view === ViewState.CREATE_POST && currentUser?.joinedHobbies?.length && currentUser.joinedHobbies.length > 0) {
-          // Only change if nothing selected, or if selected is no longer valid
+      // If we are on Create Post screen AND user has joined hobbies
+      if (view === ViewState.CREATE_POST && currentUser?.joinedHobbies?.length) {
+          // If nothing selected yet, OR the current selection is not in the joined list
           if (!selectedPostHobbyId || !currentUser.joinedHobbies.includes(selectedPostHobbyId)) {
+              // Default to the first one in the list
               setSelectedPostHobbyId(currentUser.joinedHobbies[0]);
           }
       }
@@ -192,6 +189,7 @@ export default function App() {
   const fetchUserHobbies = async (userId: string) => {
       if (!supabase) return;
       const { data: joinedData } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', userId);
+      // Ensure we map strictly to strings
       const joinedIds = joinedData ? joinedData.map((d: any) => d.hobby_id) : [];
       
       setCurrentUser(prev => prev ? { ...prev, joinedHobbies: joinedIds } : null);
@@ -328,20 +326,15 @@ export default function App() {
     if (!supabase || !currentUser) return;
     setIsLoading(true);
     
-    // 1. Create Hobby
     const { data, error } = await supabase.from('hobbies').insert({
         name, description, category, icon: '🌟', member_count: 1
     }).select().single();
 
     if (!error && data) {
-        // 2. Auto-Join
         await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
         
-        // 3. FIXED: Manually update local state (Optimistic UI)
-        // We do this to ensure the UI updates instantly without waiting for the fetch
+        // Optimistic Update
         const newJoinedList = [...currentUser.joinedHobbies, data.id];
-        
-        // Add the new hobby to the local hobbies list immediately
         const newHobbyObj: Hobby = {
             ...data,
             memberCount: 1,
@@ -349,11 +342,7 @@ export default function App() {
             icon: '🌟'
         };
         setHobbies(prev => [...prev, newHobbyObj]);
-
-        // Update User
         setCurrentUser(prev => prev ? { ...prev, joinedHobbies: newJoinedList } : null);
-        
-        // Auto-Select for Posting
         setSelectedPostHobbyId(data.id);
 
         setView(ViewState.EXPLORE);
@@ -367,25 +356,16 @@ export default function App() {
   const handleJoinCommunity = async (e: React.MouseEvent, hobbyId: string) => {
     e.stopPropagation();
     if (!supabase || !currentUser) return showToast("Please log in");
-    
-    // FIXED: Check local state first to prevent error
-    if (currentUser.joinedHobbies.includes(hobbyId)) {
-        return showToast("Already joined!");
-    }
+    if (currentUser.joinedHobbies.includes(hobbyId)) return showToast("Already joined!");
     
     const { error } = await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
 
     if (!error) {
-        // FIXED: Update local state immediately
         const newJoinedList = [...currentUser.joinedHobbies, hobbyId];
         setCurrentUser(prev => prev ? { ...prev, joinedHobbies: newJoinedList } : null);
-        
-        // Update local member count
-        setHobbies(prev => prev.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h));
-        
+        setSelectedPostHobbyId(hobbyId);
         showToast("Joined Community!");
     } else {
-        // Handle race condition where user double-clicked
         if (error.code === '23505') { 
              showToast("Already joined (synced)");
              if (!currentUser.joinedHobbies.includes(hobbyId)) {
@@ -420,7 +400,8 @@ export default function App() {
         await supabase.from('profiles').update({ stats: newStats }).eq('id', currentUser.id);
         setCurrentUser({ ...currentUser, stats: newStats });
         
-        await fetchHobbiesAndPosts(); // Fetch global feed to show new post
+        await fetchHobbiesAndPosts();
+        await fetchLeaderboard();
         
         setView(ViewState.FEED);
         showToast("Posted! +20 XP 🔥");
@@ -806,8 +787,9 @@ export default function App() {
                              {hobbies.filter(h => currentUser?.joinedHobbies.includes(h.id)).map(h => (
                                  <button 
                                     key={h.id} 
+                                    type="button" // Force button type to prevent form submit issues
                                     onClick={() => setSelectedPostHobbyId(h.id)}
-                                    className={`border px-3 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap transition-colors ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                                    className={`border px-3 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap transition-colors duration-200 active:scale-95 ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
                                  >
                                      <span>{h.icon}</span> {h.name}
                                  </button>

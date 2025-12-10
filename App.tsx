@@ -1,57 +1,47 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
 type Hobby = {
   id: string;
   name: string;
   description: string;
+  category: string;
 };
 
 export default function App() {
-  const [view, setView] = useState<"login" | "register" | "communities">("login");
-
+  const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // ✅ SESSION CHECK
+  // ------------------------------------------------
+  // AUTH LISTENER
+  // ------------------------------------------------
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data?.session?.user) {
-        setUser(data.session.user);
-        setView("communities");
-      }
+      setUser(data.session?.user ?? null);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        setView("communities");
-      } else {
-        setUser(null);
-        setView("login");
+    const { data: auth } = supabase.auth.onAuthStateChange(
+      (_ev, session) => {
+        setUser(session?.user ?? null);
       }
-    });
+    );
 
-    return () => subscription.unsubscribe();
+    return () => auth.subscription.unsubscribe();
   }, []);
 
-  // ✅ FETCH COMMUNITIES
+  // ------------------------------------------------
+  // FETCH COMMUNITIES
+  // ------------------------------------------------
   useEffect(() => {
     if (!user) return;
 
     const loadHobbies = async () => {
       const { data, error } = await supabase
         .from("hobbies")
-        .select("id,name,description")
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (!error && data) {
@@ -62,217 +52,155 @@ export default function App() {
     loadHobbies();
   }, [user]);
 
-  // ✅ LOGIN
-  const login = async (e: React.FormEvent) => {
+  // ------------------------------------------------
+  // LOGIN
+  // ------------------------------------------------
+  const handleLogin = async (e: any) => {
     e.preventDefault();
     setLoading(true);
-    setMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
+    await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) setMessage(error.message);
-
     setLoading(false);
   };
 
-  // ✅ REGISTER
-  const register = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("");
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: name } },
-    });
-
-    if (error) setMessage(error.message);
-    else {
-      setMessage("✅ Account created — login now");
-      setView("login");
-    }
-
-    setLoading(false);
+  // ------------------------------------------------
+  // LOGOUT
+  // ------------------------------------------------
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
   };
 
-  // ✅ JOIN COMMUNITY
+  // ------------------------------------------------
+  // JOIN COMMUNITY
+  // ------------------------------------------------
   const joinCommunity = async (hobbyId: string) => {
     if (!user) return;
 
-    const { error } = await supabase.from("user_hobbies").insert({
+    await supabase.from("user_hobbies").insert({
       user_id: user.id,
       hobby_id: hobbyId,
+      streak: 0,
     });
 
-    if (error) {
-      alert(error.message);
-    } else {
-      alert("✅ Joined the community");
-    }
+    alert("✅ Joined!");
   };
 
-  // ✅ LOGOUT
-  const logout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  // ---------------- UI ------------------
-
-  if (view === "communities") {
+  // ------------------------------------------------
+  // LOGIN VIEW
+  // ------------------------------------------------
+  if (!user) {
     return (
       <div style={styles.page}>
-        <h2>Communities</h2>
-        <p>{user?.email}</p>
+        <h1>Hobbystreak Login</h1>
 
-        {hobbies.map((hobby) => (
-          <div key={hobby.id} style={styles.card}>
-            <strong>{hobby.name}</strong>
-            <p>{hobby.description}</p>
-            <button
-              style={styles.join}
-              onClick={() => joinCommunity(hobby.id)}
-            >
-              Join
-            </button>
-          </div>
-        ))}
-
-        <button style={styles.logout} onClick={logout}>
-          Logout
-        </button>
-      </div>
-    );
-  }
-
-  if (view === "register") {
-    return (
-      <div style={styles.page}>
-        <h2>Create Account</h2>
-
-        <form style={styles.form} onSubmit={register}>
+        <form onSubmit={handleLogin} style={styles.form}>
           <input
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
             style={styles.input}
-          />
-
-          <input
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={styles.input}
           />
 
           <input
-            type="password"
+            style={styles.input}
             placeholder="Password"
+            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={styles.input}
           />
 
-          <button style={styles.main}>
-            {loading ? "Creating..." : "Create"}
+          <button style={styles.button} disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
-
-        <p>{message}</p>
-
-        <button style={styles.link} onClick={() => setView("login")}>
-          ← Back to Login
-        </button>
       </div>
     );
   }
 
+  // ------------------------------------------------
+  // COMMUNITY VIEW
+  // ------------------------------------------------
   return (
     <div style={styles.page}>
-      <h2>Login</h2>
+      <h2>Communities</h2>
+      <p>{user.email}</p>
 
-      <form style={styles.form} onSubmit={login}>
-        <input
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={styles.input}
-        />
-
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={styles.input}
-        />
-
-        <button style={styles.main}>
-          {loading ? "Signing in..." : "Login"}
-        </button>
-      </form>
-
-      <p>{message}</p>
-
-      <button style={styles.link} onClick={() => setView("register")}>
-        Create account
+      <button onClick={logout} style={styles.logout}>
+        Logout
       </button>
+
+      <div style={styles.grid}>
+        {hobbies.length === 0 && (
+          <p>❌ No communities found – insert again in SQL.</p>
+        )}
+
+        {hobbies.map((hobby) => (
+          <div key={hobby.id} style={styles.card}>
+            <h3>{hobby.name}</h3>
+            <p>{hobby.description}</p>
+            <small>{hobby.category}</small>
+
+            <button
+              style={styles.joinBtn}
+              onClick={() => joinCommunity(hobby.id)}
+            >
+              Join Community
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-const styles = {
+/* ------------------------------------------------ */
+
+const styles: any = {
   page: {
-    padding: "24px",
-    minHeight: "100vh",
-    background: "#f8fafc",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "12px",
-    alignItems: "center",
-    fontFamily: "Arial",
+    fontFamily: "sans-serif",
+    maxWidth: "600px",
+    margin: "40px auto",
+    textAlign: "center",
   },
   form: {
-    maxWidth: "300px",
-    width: "100%",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "8px",
+    display: "grid",
+    gap: "10px",
+    marginTop: "20px",
   },
   input: {
     padding: "10px",
-    border: "1px solid #ccc",
-    borderRadius: "6px",
+    fontSize: "16px",
   },
-  main: {
-    background: "#0f172a",
-    color: "white",
-    padding: "10px",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-  },
-  link: {
-    background: "none",
-    border: "none",
-    color: "#2563eb",
-    cursor: "pointer",
-  },
-  card: {
-    width: "100%",
-    maxWidth: "300px",
-    background: "white",
+  button: {
     padding: "12px",
-    borderRadius: "8px",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-  },
-  join: {
-    marginTop: "6px",
+    fontSize: "16px",
+    cursor: "pointer",
   },
   logout: {
-    marginTop: "16px",
+    background: "#111",
+    color: "white",
+    padding: "8px 14px",
+    marginBottom: "20px",
+    cursor: "pointer",
+  },
+  grid: {
+    display: "grid",
+    gap: "12px",
+    marginTop: "30px",
+  },
+  card: {
+    padding: "16px",
+    background: "#f7f7f7",
+    borderRadius: "8px",
+  },
+  joinBtn: {
+    marginTop: "10px",
+    padding: "8px",
+    cursor: "pointer",
   },
 };

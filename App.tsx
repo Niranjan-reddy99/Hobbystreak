@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Home, Compass, User as UserIcon, Plus, Heart, MessageCircle, 
-  Send, Check, ArrowLeft, X, LogOut, Flame, Calendar, 
-  Bell, Loader2, Signal, Wifi, Battery, ChevronRight, Trophy, Users
+  Check, ArrowLeft, X, LogOut, Flame, Calendar, 
+  Bell, Loader2, Signal, Wifi, Battery, ChevronRight, Trophy, Users,
+  CheckCircle, Circle, Trash2
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -49,7 +50,7 @@ interface Hobby {
   category: HobbyCategory;
   memberCount: number;
   icon: string;
-  image: string; // Added for banner
+  image: string;
 }
 
 interface Post {
@@ -62,6 +63,14 @@ interface Post {
   authorName: string;
   authorAvatar?: string;
   timestamp: string;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  date: string; // ISO Date String YYYY-MM-DD
+  completed: boolean;
+  hobbyId?: string; // Optional link to a hobby
 }
 
 // --- MOCK DATA ---
@@ -121,6 +130,11 @@ const MOCK_USER: User = {
   }
 };
 
+const INITIAL_TASKS: Task[] = [
+    { id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' },
+    { id: 't2', title: 'Draw 1 sprite', date: new Date().toISOString().split('T')[0], completed: true, hobbyId: 'h2' },
+];
+
 // --- COMPONENTS ---
 
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
@@ -160,8 +174,11 @@ export default function App() {
   // Data
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]); // New Task State
+  
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]); // Default to Today
 
   // UI
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -170,6 +187,7 @@ export default function App() {
   useEffect(() => {
     setHobbies(MOCK_HOBBIES);
     setPosts(MOCK_POSTS);
+    setTasks(INITIAL_TASKS);
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -197,7 +215,6 @@ export default function App() {
         joinedHobbies: [...prev.joinedHobbies, hobbyId]
     } : null);
     
-    // Update local member count for display
     setHobbies(prev => prev.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h));
     showToast("Joined Community!");
   };
@@ -221,8 +238,6 @@ export default function App() {
     };
     
     setPosts([newPost, ...posts]);
-    
-    // Increment Streak (Simple Logic)
     setCurrentUser(prev => prev ? {
         ...prev,
         stats: {
@@ -234,6 +249,39 @@ export default function App() {
 
     setView(ViewState.FEED);
     showToast("Posted! Streak +1 🔥");
+  };
+
+  // Schedule Functions
+  const handleToggleTask = (taskId: string) => {
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t));
+  };
+
+  const handleAddTask = (title: string, hobbyId?: string) => {
+      const newTask: Task = {
+          id: `t${Date.now()}`,
+          title,
+          date: selectedDate,
+          completed: false,
+          hobbyId
+      };
+      setTasks([...tasks, newTask]);
+      showToast("Task added");
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+  };
+
+  // Helper to generate the next 7 days
+  const getWeekDays = () => {
+      const days = [];
+      const today = new Date();
+      for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() + i);
+          days.push(d);
+      }
+      return days;
   };
 
   // --- RENDER HELPERS ---
@@ -508,10 +556,102 @@ export default function App() {
             )}
 
             {view === ViewState.SCHEDULE && (
-                <div className="h-full flex items-center justify-center text-slate-400">
-                    <div className="text-center">
-                        <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>Schedule coming soon</p>
+                <div className="px-6 pt-4 h-full flex flex-col">
+                    <h1 className="text-xl font-bold mb-6">Schedule</h1>
+                    
+                    {/* Weekly Calendar Strip */}
+                    <div className="flex justify-between mb-8 overflow-x-auto no-scrollbar pb-2">
+                        {getWeekDays().map((date, index) => {
+                            const dateStr = date.toISOString().split('T')[0];
+                            const isSelected = dateStr === selectedDate;
+                            const isToday = dateStr === new Date().toISOString().split('T')[0];
+                            
+                            return (
+                                <button 
+                                    key={index}
+                                    onClick={() => setSelectedDate(dateStr)}
+                                    className={`flex flex-col items-center justify-center min-w-[50px] h-[70px] rounded-2xl transition-all ${isSelected ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/30 scale-105' : 'bg-white text-slate-400 border border-slate-100'}`}
+                                >
+                                    <span className="text-[10px] font-bold uppercase">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()]}</span>
+                                    <span className={`text-lg font-bold ${isSelected ? 'text-white' : 'text-slate-900'}`}>{date.getDate()}</span>
+                                    {isToday && !isSelected && <div className="w-1 h-1 bg-red-500 rounded-full mt-1"></div>}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <div className="flex justify-between items-end mb-4">
+                        <div>
+                            <h2 className="font-bold text-lg">Your Tasks</h2>
+                            <p className="text-xs text-slate-400">
+                                {tasks.filter(t => t.date === selectedDate).length} tasks for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long' })}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Task List */}
+                    <div className="flex-1 overflow-y-auto space-y-3 pb-24 pr-2">
+                        {tasks
+                            .filter(t => t.date === selectedDate)
+                            .map(task => {
+                                const taskHobby = hobbies.find(h => h.id === task.hobbyId);
+                                return (
+                                    <div key={task.id} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-3 group">
+                                        <button onClick={() => handleToggleTask(task.id)} className={`transition-colors ${task.completed ? 'text-green-500' : 'text-slate-200 hover:text-slate-300'}`}>
+                                            {task.completed ? <CheckCircle className="w-6 h-6" fill="currentColor" className="text-green-100" /> : <Circle className="w-6 h-6" />}
+                                        </button>
+                                        <div className="flex-1">
+                                            <p className={`text-sm font-medium transition-all ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{task.title}</p>
+                                            {taskHobby && (
+                                                <div className="flex items-center gap-1 mt-1">
+                                                    <span className="text-xs">{taskHobby.icon}</span>
+                                                    <span className="text-[10px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">{taskHobby.name}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                );
+                        })}
+                        
+                        {tasks.filter(t => t.date === selectedDate).length === 0 && (
+                            <div className="text-center py-10 text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">
+                                <p>No tasks for this day.</p>
+                                <p className="text-sm">Enjoy your free time!</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Quick Add Task */}
+                    <div className="absolute bottom-24 left-6 right-6">
+                        <div className="bg-white p-2 rounded-2xl shadow-lg border border-slate-100 flex gap-2">
+                            <input 
+                                id="new-task-input"
+                                className="flex-1 pl-4 outline-none text-sm" 
+                                placeholder="Add a new task..." 
+                                onKeyDown={(e) => {
+                                    if(e.key === 'Enter') {
+                                        const input = e.currentTarget;
+                                        handleAddTask(input.value, currentUser?.joinedHobbies[0]);
+                                        input.value = '';
+                                    }
+                                }}
+                            />
+                            <Button 
+                                className="w-10 h-10 p-0 rounded-xl" 
+                                onClick={() => {
+                                    const input = document.getElementById('new-task-input') as HTMLInputElement;
+                                    if(input.value) {
+                                        handleAddTask(input.value, currentUser?.joinedHobbies[0]);
+                                        input.value = '';
+                                    }
+                                }}
+                            >
+                                <Plus className="w-5 h-5" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}

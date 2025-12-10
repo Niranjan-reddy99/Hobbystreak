@@ -167,11 +167,9 @@ export default function App() {
             fetchUserHobbies(session.user.id);
         }
 
-        // 2. Fetch Public Data
         await fetchHobbiesAndPosts();
         await fetchLeaderboard();
         
-        // 3. Load Local Tasks
         const savedTasks = localStorage.getItem('hobbystreak_tasks');
         if (savedTasks) setTasks(JSON.parse(savedTasks));
         else setTasks(INITIAL_TASKS);
@@ -180,19 +178,22 @@ export default function App() {
     initData();
   }, []);
 
-  // Set default selected hobby when entering Create Post screen
+  // --- AUTO-SELECT COMMUNITY FOR POSTING ---
+  // This ensures that as soon as you have joined communities, one is selected
   useEffect(() => {
-      if (view === ViewState.CREATE_POST && currentUser?.joinedHobbies.length && !selectedPostHobbyId) {
-          setSelectedPostHobbyId(currentUser.joinedHobbies[0]);
+      if (view === ViewState.CREATE_POST && currentUser?.joinedHobbies?.length && currentUser.joinedHobbies.length > 0) {
+          // Only change if nothing selected, or if selected is no longer valid
+          if (!selectedPostHobbyId || !currentUser.joinedHobbies.includes(selectedPostHobbyId)) {
+              setSelectedPostHobbyId(currentUser.joinedHobbies[0]);
+          }
       }
-  }, [view, currentUser]);
+  }, [view, currentUser?.joinedHobbies]);
 
   const fetchUserHobbies = async (userId: string) => {
       if (!supabase) return;
       const { data: joinedData } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', userId);
       const joinedIds = joinedData ? joinedData.map((d: any) => d.hobby_id) : [];
       
-      // FIXED: Force update the local user state with joined IDs
       setCurrentUser(prev => prev ? { ...prev, joinedHobbies: joinedIds } : null);
   };
 
@@ -332,20 +333,29 @@ export default function App() {
         name, description, category, icon: '🌟', member_count: 1
     }).select().single();
 
-    if (!error) {
-        // 2. Auto-Join in DB
+    if (!error && data) {
+        // 2. Auto-Join
         await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
         
-        // 3. INSTANTLY update Local State so user can post immediately
+        // 3. FIXED: Manually update local state (Optimistic UI)
+        // We do this to ensure the UI updates instantly without waiting for the fetch
         const newJoinedList = [...currentUser.joinedHobbies, data.id];
+        
+        // Add the new hobby to the local hobbies list immediately
+        const newHobbyObj: Hobby = {
+            ...data,
+            memberCount: 1,
+            image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=600&q=80',
+            icon: '🌟'
+        };
+        setHobbies(prev => [...prev, newHobbyObj]);
+
+        // Update User
         setCurrentUser(prev => prev ? { ...prev, joinedHobbies: newJoinedList } : null);
         
-        // Update selected hobby so Create Post is ready
+        // Auto-Select for Posting
         setSelectedPostHobbyId(data.id);
 
-        // 4. Refresh global lists
-        await fetchHobbiesAndPosts();
-        
         setView(ViewState.EXPLORE);
         showToast("Community Created & Joined!");
     } else {
@@ -358,7 +368,7 @@ export default function App() {
     e.stopPropagation();
     if (!supabase || !currentUser) return showToast("Please log in");
     
-    // Check local state first
+    // FIXED: Check local state first to prevent error
     if (currentUser.joinedHobbies.includes(hobbyId)) {
         return showToast("Already joined!");
     }
@@ -366,14 +376,16 @@ export default function App() {
     const { error } = await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
 
     if (!error) {
-        // Instantly update local state
+        // FIXED: Update local state immediately
         const newJoinedList = [...currentUser.joinedHobbies, hobbyId];
         setCurrentUser(prev => prev ? { ...prev, joinedHobbies: newJoinedList } : null);
-        setSelectedPostHobbyId(hobbyId); // Auto select new hobby for posting
+        
+        // Update local member count
+        setHobbies(prev => prev.map(h => h.id === hobbyId ? { ...h, memberCount: h.memberCount + 1 } : h));
         
         showToast("Joined Community!");
     } else {
-        // Graceful error handling
+        // Handle race condition where user double-clicked
         if (error.code === '23505') { 
              showToast("Already joined (synced)");
              if (!currentUser.joinedHobbies.includes(hobbyId)) {
@@ -408,8 +420,7 @@ export default function App() {
         await supabase.from('profiles').update({ stats: newStats }).eq('id', currentUser.id);
         setCurrentUser({ ...currentUser, stats: newStats });
         
-        await fetchHobbiesAndPosts();
-        await fetchLeaderboard();
+        await fetchHobbiesAndPosts(); // Fetch global feed to show new post
         
         setView(ViewState.FEED);
         showToast("Posted! +20 XP 🔥");

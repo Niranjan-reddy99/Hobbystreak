@@ -24,7 +24,9 @@ import {
 } from "./components/Icons";
 
 import { ViewState, HobbyCategory, User, Hobby, Post } from "./types";
-import { supabase, isKeyValid, isKeyFormatCorrect, mapSupabaseUserToAppUser } from "./services/supabaseClient";
+import { supabase, isKeyValid, isKeyFormatCorrect, mapSupabaseUserToAppUser }
+from "./supabaseClient";
+
 
 /* ------------ Toast ------------ */
 const Toast = ({ message, type = "success" }: { message: string; type?: "success" | "error" }) => (

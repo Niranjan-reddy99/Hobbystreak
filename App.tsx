@@ -1,21 +1,31 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 
+type Hobby = {
+  id: string;
+  name: string;
+  description: string;
+};
+
 export default function App() {
-  const [view, setView] = useState<"login" | "register" | "feed">("login");
+  const [view, setView] = useState<"login" | "register" | "communities">("login");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  // ✅ Check auth session at startup
+  const [hobbies, setHobbies] = useState<Hobby[]>([]);
+
+  // ✅ SESSION CHECK
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data?.session?.user) {
         setUser(data.session.user);
-        setView("feed");
+        setView("communities");
       }
     });
 
@@ -24,7 +34,7 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        setView("feed");
+        setView("communities");
       } else {
         setUser(null);
         setView("login");
@@ -34,8 +44,26 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ✅ FETCH COMMUNITIES
+  useEffect(() => {
+    if (!user) return;
+
+    const loadHobbies = async () => {
+      const { data, error } = await supabase
+        .from("hobbies")
+        .select("id,name,description")
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setHobbies(data);
+      }
+    };
+
+    loadHobbies();
+  }, [user]);
+
   // ✅ LOGIN
-  const handleLogin = async (e: React.FormEvent) => {
+  const login = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
@@ -46,11 +74,12 @@ export default function App() {
     });
 
     if (error) setMessage(error.message);
+
     setLoading(false);
   };
 
   // ✅ REGISTER
-  const handleRegister = async (e: React.FormEvent) => {
+  const register = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
@@ -61,30 +90,58 @@ export default function App() {
       options: { data: { full_name: name } },
     });
 
-    if (error) {
-      setMessage(error.message);
-    } else {
-      setMessage("✅ Registered! Now log in.");
+    if (error) setMessage(error.message);
+    else {
+      setMessage("✅ Account created — login now");
       setView("login");
     }
 
     setLoading(false);
   };
 
+  // ✅ JOIN COMMUNITY
+  const joinCommunity = async (hobbyId: string) => {
+    if (!user) return;
+
+    const { error } = await supabase.from("user_hobbies").insert({
+      user_id: user.id,
+      hobby_id: hobbyId,
+    });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      alert("✅ Joined the community");
+    }
+  };
+
   // ✅ LOGOUT
-  const handleLogout = async () => {
+  const logout = async () => {
     await supabase.auth.signOut();
   };
 
-  // ---------------- UI ----------------
+  // ---------------- UI ------------------
 
-  if (view === "feed") {
+  if (view === "communities") {
     return (
       <div style={styles.page}>
-        <h1>✅ Logged in</h1>
+        <h2>Communities</h2>
         <p>{user?.email}</p>
 
-        <button style={styles.button} onClick={handleLogout}>
+        {hobbies.map((hobby) => (
+          <div key={hobby.id} style={styles.card}>
+            <strong>{hobby.name}</strong>
+            <p>{hobby.description}</p>
+            <button
+              style={styles.join}
+              onClick={() => joinCommunity(hobby.id)}
+            >
+              Join
+            </button>
+          </div>
+        ))}
+
+        <button style={styles.logout} onClick={logout}>
           Logout
         </button>
       </div>
@@ -96,37 +153,35 @@ export default function App() {
       <div style={styles.page}>
         <h2>Create Account</h2>
 
-        <form style={styles.form} onSubmit={handleRegister}>
+        <form style={styles.form} onSubmit={register}>
           <input
-            style={styles.input}
-            type="text"
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            style={styles.input}
           />
 
           <input
-            style={styles.input}
-            type="email"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            style={styles.input}
           />
 
           <input
-            style={styles.input}
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            style={styles.input}
           />
 
-          <button style={styles.button} type="submit">
-            {loading ? "Creating..." : "Create Account"}
+          <button style={styles.main}>
+            {loading ? "Creating..." : "Create"}
           </button>
         </form>
 
-        {message && <p style={styles.message}>{message}</p>}
+        <p>{message}</p>
 
         <button style={styles.link} onClick={() => setView("login")}>
           ← Back to Login
@@ -135,76 +190,70 @@ export default function App() {
     );
   }
 
-  // ✅ LOGIN VIEW
   return (
     <div style={styles.page}>
-      <h2>Log In</h2>
+      <h2>Login</h2>
 
-      <form style={styles.form} onSubmit={handleLogin}>
+      <form style={styles.form} onSubmit={login}>
         <input
-          style={styles.input}
-          type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          style={styles.input}
         />
 
         <input
-          style={styles.input}
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          style={styles.input}
         />
 
-        <button style={styles.button} type="submit">
-          {loading ? "Logging in..." : "Login"}
+        <button style={styles.main}>
+          {loading ? "Signing in..." : "Login"}
         </button>
       </form>
 
-      {message && <p style={styles.message}>{message}</p>}
+      <p>{message}</p>
 
       <button style={styles.link} onClick={() => setView("register")}>
-        Create new account
+        Create account
       </button>
     </div>
   );
 }
 
-// ---------------- STYLES ----------------
-
 const styles = {
   page: {
+    padding: "24px",
     minHeight: "100vh",
-    padding: "32px",
     background: "#f8fafc",
     display: "flex",
     flexDirection: "column" as const,
-    justifyContent: "center",
-    alignItems: "center",
     gap: "12px",
-    fontFamily: "Arial, sans-serif",
+    alignItems: "center",
+    fontFamily: "Arial",
   },
   form: {
+    maxWidth: "300px",
     width: "100%",
-    maxWidth: "320px",
     display: "flex",
     flexDirection: "column" as const,
     gap: "8px",
   },
   input: {
-    padding: "12px",
-    borderRadius: "6px",
+    padding: "10px",
     border: "1px solid #ccc",
-    fontSize: "16px",
+    borderRadius: "6px",
   },
-  button: {
-    padding: "12px",
+  main: {
     background: "#0f172a",
     color: "white",
+    padding: "10px",
     border: "none",
     borderRadius: "6px",
-    fontSize: "16px",
+    cursor: "pointer",
   },
   link: {
     background: "none",
@@ -212,7 +261,18 @@ const styles = {
     color: "#2563eb",
     cursor: "pointer",
   },
-  message: {
-    color: "#dc2626",
+  card: {
+    width: "100%",
+    maxWidth: "300px",
+    background: "white",
+    padding: "12px",
+    borderRadius: "8px",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+  },
+  join: {
+    marginTop: "6px",
+  },
+  logout: {
+    marginTop: "16px",
   },
 };

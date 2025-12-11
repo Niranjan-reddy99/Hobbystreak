@@ -47,7 +47,6 @@ interface Hobby { id: string; name: string; description: string; category: Hobby
 
 interface Comment { id: string; userId: string; content: string; authorName: string; }
 
-// MERGED POST TYPE
 interface Post { 
   id: string; userId: string; hobbyId: string | null; content: string; 
   likes: number; isLiked: boolean; comments: Comment[]; 
@@ -114,7 +113,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [selectedPostHobbyId, setSelectedPostHobbyId] = useState<string>('');
-  const [expandedPostId, setExpandedPostId] = useState<string | null>(null); // For Comments UI
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -138,7 +137,6 @@ export default function App() {
             }
         } catch (e) { console.log("Session check failed", e); }
         
-        // Load tasks (initially empty or mock)
         setTasks(INITIAL_TASKS);
         setIsAppLoading(false);
     };
@@ -148,27 +146,16 @@ export default function App() {
   // --- DATA LOADING ---
   const loadUserProfile = async (user: any) => {
       if (!supabase) return;
-      
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
       
-      if (profile) {
-          setCurrentUser({
-              id: user.id,
-              name: profile.name,
-              email: profile.email,
-              avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-              stats: profile.stats || { totalStreak: 0, points: 0 }
-          });
-      } else {
-          // Fallback
-          setCurrentUser({
-              id: user.id,
-              name: user.email?.split('@')[0],
-              email: user.email,
-              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-              stats: { totalStreak: 0, points: 0 }
-          });
-      }
+      const userDefaults = {
+          id: user.id,
+          name: profile?.name || user.email?.split('@')[0] || 'User',
+          email: user.email || '',
+          avatar: profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+          stats: profile?.stats || { totalStreak: 0, points: 0 }
+      };
+      setCurrentUser(userDefaults);
 
       const { data: joined } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', user.id);
       if (joined) {
@@ -177,9 +164,9 @@ export default function App() {
           if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
       }
       
-      // Load Tasks from DB
       const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', user.id);
       if (tasksData) setTasks(tasksData);
+      else setTasks(INITIAL_TASKS);
   };
 
   const fetchHobbiesAndPosts = async (currentUserId: string | null = null) => {
@@ -202,10 +189,8 @@ export default function App() {
               authors = data || [];
           }
 
-          // Fetch Comments
           const { data: commentsData } = await supabase.from('comments').select('*');
           
-          // Fetch My Likes
           let myLikedPostIds: string[] = [];
           if (currentUserId) {
               const { data: likes } = await supabase.from('post_likes').select('post_id').eq('user_id', currentUserId);
@@ -220,7 +205,7 @@ export default function App() {
                   const commentAuthor = authors.find(a => a.id === c.user_id);
                   return {
                       id: c.id, userId: c.user_id, content: c.content,
-                      authorName: commentAuthor?.name || 'User'
+                      authorName: commentAuthor?.name || 'User' 
                   };
               });
 
@@ -230,7 +215,7 @@ export default function App() {
                   isLiked: myLikedPostIds.includes(p.id),
                   comments: mappedComments,
                   authorName: author?.name || 'Anonymous', 
-                  authorAvatar: author?.avatar,
+                  authorAvatar: author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.user_id}`,
                   timestamp: new Date(p.created_at).toLocaleDateString()
               };
           }));
@@ -258,7 +243,6 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        // Upsert Profile
         await supabase.from('profiles').upsert({ id: data.session.user.id, email: email, name: email.split('@')[0], stats: { points: 0, totalStreak: 0 } });
         await loadUserProfile(data.session.user);
         await fetchHobbiesAndPosts(data.session.user.id);
@@ -275,7 +259,7 @@ export default function App() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) showToast(error.message, 'error');
       else if (data.user) {
-          await supabase.from('profiles').insert({ id: data.user.id, name, email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`, stats: { points: 0, totalStreak: 0 } });
+          await supabase.from('profiles').insert({ id: data.user.id, name: name, email: email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`, stats: { points: 0, totalStreak: 0 } });
           if(data.session) { 
               await loadUserProfile(data.user); 
               await fetchHobbiesAndPosts(data.user.id);
@@ -314,7 +298,6 @@ export default function App() {
       }
   };
 
-  // --- SOCIAL LOGIC (Merged) ---
   const handleLike = async (post: Post) => {
       if (!supabase || !currentUser) return showToast("Login to like!");
 
@@ -383,7 +366,23 @@ export default function App() {
       }
   };
 
-  // --- SCHEDULE LOGIC (Merged) ---
+  const handleLeaveCommunity = async () => {
+      if (!currentUser || !selectedHobby) return;
+      const { error } = await supabase
+          .from('user_hobbies')
+          .delete()
+          .match({ user_id: currentUser.id, hobby_id: selectedHobby.id });
+
+      if (!error) {
+          setJoinedHobbyIds(prev => prev.filter(id => id !== selectedHobby.id));
+          await supabase.from('hobbies').update({ member_count: Math.max(0, selectedHobby.memberCount - 1) }).eq('id', selectedHobby.id);
+          fetchHobbiesAndPosts(currentUser.id);
+          if (selectedPostHobbyId === selectedHobby.id) setSelectedPostHobbyId('');
+          setView(ViewState.EXPLORE);
+          showToast("Left community");
+      }
+  };
+
   const handleAddTask = async (title: string) => {
       if (!currentUser) return showToast("Login to add tasks");
       const { data, error } = await supabase.from('tasks').insert({ 
@@ -607,10 +606,10 @@ export default function App() {
                          <p className="text-sm text-slate-600 mb-6">{selectedHobby.description}</p>
                          
                          {joinedHobbyIds.includes(selectedHobby.id) ? (
-                            <Button className="w-full mb-8" onClick={() => {
-                                setSelectedPostHobbyId(selectedHobby.id); // Pre-select
-                                setView(ViewState.CREATE_POST); // Go to post screen
-                            }}>Write a Post</Button>
+                             <div className="flex gap-2 mb-8">
+                                <Button className="flex-1" onClick={() => { setSelectedPostHobbyId(selectedHobby.id); setView(ViewState.CREATE_POST); }}>Write a Post</Button>
+                                <button onClick={handleLeaveCommunity} className="px-4 bg-red-50 text-red-500 rounded-2xl border border-red-100 text-xs font-bold hover:bg-red-100">Leave</button>
+                             </div>
                          ) : (
                             <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}>Join Community</Button>
                          )}
@@ -662,52 +661,18 @@ export default function App() {
             {view === ViewState.SCHEDULE && (
                 <div className="px-6 pt-4 h-full flex flex-col">
                     <h1 className="text-xl font-bold mb-6">Schedule</h1>
-                    
-                    {/* Weekly Calendar Strip */}
-                    <div className="flex justify-between mb-8 overflow-x-auto no-scrollbar pb-2">
-                        {getWeekDays().map((date, index) => {
-                            const dateStr = date.toISOString().split('T')[0];
-                            const isSelected = dateStr === selectedDate;
-                            const dayName = ['S','M','T','W','T','F','S'][date.getDay()];
-                            return (
-                                <button key={index} onClick={() => setSelectedDate(dateStr)} className={`w-10 h-14 border rounded-xl flex flex-col items-center justify-center text-xs transition-colors ${isSelected ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400'}`}>
-                                    <span className="text-[10px] font-medium">{dayName}</span>
-                                    <span className="font-bold text-sm">{date.getDate()}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                    
-                    {/* Task List */}
+                    <div className="flex justify-between mb-6">{[0,1,2,3,4,5,6].map((i) => { const d = new Date(); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; return (<button key={i} onClick={() => setSelectedDate(dateStr)} className={`w-10 h-14 border rounded-xl flex flex-col items-center justify-center text-xs ${selectedDate === dateStr ? 'bg-slate-900 text-white' : 'bg-white'}`}><span className="font-bold">{d.getDate()}</span></button>)})}</div>
                     <div className="flex-1 overflow-y-auto space-y-2">
                         {tasks.filter(t => t.date === selectedDate).map(t => (
-                            <div key={t.id} className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm group">
-                                <button onClick={() => handleToggleTask(t)}>
-                                    {t.completed ? <CheckCircle className="w-6 h-6 text-green-500"/> : <Circle className="w-6 h-6 text-slate-300"/>}
-                                </button>
-                                {/* Strikethrough style */}
-                                <span className={`flex-1 text-sm ${t.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
-                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
+                            <div key={t.id} className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm">
+                                <button onClick={() => handleToggleTask(t)}>{t.completed ? <CheckCircle className="w-6 h-6 text-green-500"/> : <Circle className="w-6 h-6 text-slate-300"/>}</button>
+                                <span className={t.completed ? 'line-through text-slate-400' : ''}>{t.title}</span>
+                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto"><Trash2 className="w-4 h-4 text-slate-300"/></button>
                             </div>
                         ))}
                         {tasks.filter(t => t.date === selectedDate).length === 0 && <p className="text-center text-slate-400 text-xs mt-10">No events.</p>}
                     </div>
-                    
-                    {/* Add Task Input */}
-                    <div className="bg-white p-2 rounded-2xl shadow-lg border flex gap-2 mt-4 absolute bottom-24 left-6 right-6">
-                        <input id="new-task" className="flex-1 pl-4 outline-none text-sm bg-transparent" placeholder="Add event..." 
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    const target = e.target as HTMLInputElement;
-                                    if(target.value) { handleAddTask(target.value); target.value = ''; }
-                                }
-                            }}
-                        />
-                        <button onClick={() => { 
-                            const input = document.getElementById('new-task') as HTMLInputElement; 
-                            if(input.value) { handleAddTask(input.value); input.value = ''; } 
-                        }} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-700 transition-colors"><Plus className="w-5 h-5"/></button>
-                    </div>
+                    <div className="bg-white p-2 rounded-2xl shadow-lg border flex gap-2 mt-4 absolute bottom-24 left-6 right-6"><input id="new-task" className="flex-1 pl-4 outline-none text-sm" placeholder="Add event..." /><button onClick={() => { const val = (document.getElementById('new-task') as HTMLInputElement).value; if(val) handleAddTask(val); }} className="bg-slate-900 text-white p-2 rounded-xl"><Plus className="w-5 h-5"/></button></div>
                 </div>
             )}
 

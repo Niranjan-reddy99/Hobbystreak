@@ -5,7 +5,7 @@ import {
   Home, Compass, User as UserIcon, Plus, Heart, MessageCircle, 
   Check, ArrowLeft, X, LogOut, Flame, Calendar, 
   Bell, Loader2, Signal, Wifi, Battery, ChevronRight, Trophy, Users,
-  CheckCircle, Circle, Trash2, Send
+  CheckCircle, Circle, Trash2, RefreshCw, Send
 } from 'lucide-react';
 
 // ==========================================
@@ -14,6 +14,7 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
+// Memory Storage (Bypasses Browser Blocks)
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -39,25 +40,23 @@ enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, 
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
 
 interface UserProfile {
-  id: string; name: string; email: string; avatar: string;
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
   stats: { totalStreak: number; points: number; };
 }
 
 interface Hobby { id: string; name: string; description: string; category: HobbyCategory; memberCount: number; icon: string; image: string; }
-
 interface Comment { id: string; userId: string; content: string; authorName: string; }
-
-interface Post { 
-  id: string; userId: string; hobbyId: string | null; content: string; 
-  likes: number; comments: Comment[]; 
-  authorName: string; authorAvatar?: string; timestamp: string; 
-}
-
-interface Task { id: string; title: string; date: string; completed: boolean; }
+interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: Comment[]; authorName: string; authorAvatar?: string; timestamp: string; }
+interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
 
 // ==========================================
-// 3. COMPONENTS
+// 3. CONSTANTS & COMPONENTS
 // ==========================================
+const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
+
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -103,7 +102,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [joinedHobbyIds, setJoinedHobbyIds] = useState<string[]>([]);
 
-  // UI State
+  // Inputs
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -127,6 +126,7 @@ export default function App() {
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
+                // Pass session user explicitly
                 await loadUserProfile(session.user);
                 setView(ViewState.FEED);
             }
@@ -140,23 +140,39 @@ export default function App() {
   // --- DATA LOADING ---
   const loadUserProfile = async (user: any) => {
       if (!supabase) return;
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       
-      setCurrentUser({
-          id: user.id,
-          name: profile?.name || user.email?.split('@')[0],
-          email: user.email || '',
-          avatar: profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-          stats: profile?.stats || { totalStreak: 0, points: 0 }
-      });
+      // Try to get profile from DB
+      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      
+      if (profile && !error) {
+          setCurrentUser({
+              id: user.id,
+              name: profile.name,
+              email: profile.email,
+              avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+              stats: profile.stats || { totalStreak: 0, points: 0 }
+          });
+      } else {
+          // CRITICAL FIX: If profile is missing in DB (because we wiped it), use Auth data temporarily
+          // This prevents currentUser from being null
+          console.warn("Profile missing in DB, using Auth data fallback");
+          setCurrentUser({
+              id: user.id,
+              name: user.email?.split('@')[0] || 'User',
+              email: user.email || '',
+              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+              stats: { totalStreak: 0, points: 0 }
+          });
+      }
 
+      // Load Joins
       const { data: joined } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', user.id);
       if (joined) {
           const ids = joined.map((j: any) => j.hobby_id);
           setJoinedHobbyIds(ids);
           if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
       }
-
+      
       // Load Tasks
       const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', user.id);
       if (tasksData) setTasks(tasksData);
@@ -182,7 +198,6 @@ export default function App() {
               authors = data || [];
           }
 
-          // Fetch Comments
           const { data: commentsData } = await supabase.from('comments').select('*');
 
           setPosts(postsData.map((p: any) => {
@@ -221,11 +236,20 @@ export default function App() {
     e.preventDefault();
     setIsLoading(true);
     if (!supabase) return;
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        await supabase.from('profiles').upsert({ id: data.session.user.id, email, name: email.split('@')[0], stats: { points: 0, totalStreak: 0 } });
+        // --- CRITICAL FIX: RE-CREATE PROFILE IF MISSING ---
+        // This ensures the DB row exists, so subsequent posts have a valid user_id
+        await supabase.from('profiles').upsert({
+            id: data.session.user.id,
+            email: email,
+            name: email.split('@')[0],
+            stats: { points: 0, totalStreak: 0 }
+        });
+
         await loadUserProfile(data.session.user);
         setEmail(''); setPassword('');
         setView(ViewState.FEED);
@@ -240,8 +264,12 @@ export default function App() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) showToast(error.message, 'error');
       else if (data.user) {
-          await supabase.from('profiles').insert({ id: data.user.id, name, email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`, stats: { points: 0, totalStreak: 0 } });
-          if(data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
+          await supabase.from('profiles').insert({
+              id: data.user.id, name: name, email: email,
+              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
+              stats: { points: 0, totalStreak: 0 }
+          });
+          if (data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
           else { showToast("Account created! Log in."); setView(ViewState.LOGIN); }
       }
       setIsLoading(false);
@@ -255,7 +283,7 @@ export default function App() {
       setView(ViewState.LOGIN);
   };
 
-  // --- COMMUNITY ---
+  // --- COMMUNITY ACTIONS ---
 
   const handleJoinCommunity = async (e: React.MouseEvent, hobbyId: string) => {
       e.stopPropagation();
@@ -263,11 +291,18 @@ export default function App() {
       const { error } = await supabase!.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
       if (!error) {
           setJoinedHobbyIds(prev => [...prev, hobbyId]);
-          // Update Count
           const current = hobbies.find(h => h.id === hobbyId);
           await supabase!.from('hobbies').update({ member_count: (current?.memberCount || 0) + 1 }).eq('id', hobbyId);
           fetchHobbiesAndPosts();
           showToast("Joined!");
+      } else {
+          // If already joined (unique constraint), just update local state
+          if (error.code === '23505') {
+              setJoinedHobbyIds(prev => [...prev, hobbyId]);
+              showToast("Joined (Synced)");
+          } else {
+              showToast("Error joining", 'error');
+          }
       }
   };
 
@@ -290,35 +325,57 @@ export default function App() {
 
   const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {
       setIsLoading(true);
-      const { data, error } = await supabase!.from('hobbies').insert({
+      if (!currentUser || !supabase) return;
+
+      const { data, error } = await supabase.from('hobbies').insert({
           name: n, description: d, category: c, icon: '🌟', member_count: 1, 
           image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f'
       }).select().single();
+
       if (data && !error) {
-          await supabase!.from('user_hobbies').insert({ user_id: currentUser!.id, hobby_id: data.id });
+          await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
           setJoinedHobbyIds(prev => [...prev, data.id]);
+          setSelectedPostHobbyId(data.id);
           await fetchHobbiesAndPosts();
           setView(ViewState.EXPLORE);
+          showToast("Created!");
+      } else {
+          showToast(error?.message || "Failed", 'error');
       }
       setIsLoading(false);
   };
 
-  // --- POSTS / LIKES / COMMENTS ---
+  // --- POST ACTIONS ---
 
   const handleCreatePost = async (content: string) => {
-      const uid = currentUser?.id;
-      const { error } = await supabase!.from('posts').insert({ user_id: uid, hobby_id: selectedPostHobbyId || null, content });
+      if (!supabase) return showToast("DB Error", "error");
+      
+      // Get User ID from state or session or null
+      let uid = currentUser?.id || null; 
+
+      const { error } = await supabase.from('posts').insert({
+          user_id: uid,
+          hobby_id: selectedPostHobbyId || null,
+          content
+      });
+
       if (!error) {
+          if (uid && currentUser) {
+              const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
+              await supabase.from('profiles').update({ stats: newStats }).eq('id', uid);
+              setCurrentUser({ ...currentUser, stats: newStats });
+          }
           await fetchHobbiesAndPosts();
           if (view !== ViewState.COMMUNITY_DETAILS) setView(ViewState.FEED);
           triggerConfetti();
           showToast("Posted!");
+      } else {
+          showToast("Error: " + error.message, 'error');
       }
   };
 
   const handleLike = async (post: Post) => {
       if (!supabase) return;
-      // Optimistic Update
       setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: p.likes + 1 } : p));
       await supabase.from('posts').update({ likes: post.likes + 1 }).eq('id', post.id);
   };
@@ -327,11 +384,11 @@ export default function App() {
       if (!currentUser || !content) return;
       const { error } = await supabase!.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
       if (!error) {
-          await fetchHobbiesAndPosts(); // Refresh to see comment
+          await fetchHobbiesAndPosts();
       }
   };
 
-  // --- SCHEDULE ---
+  // --- SCHEDULE ACTIONS ---
 
   const handleAddTask = async (title: string) => {
       if (!currentUser) return;
@@ -406,7 +463,7 @@ export default function App() {
                             return (
                             <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
                                 <div className="flex items-center gap-3 mb-3">
-                                    <img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" />
+                                    <img src={post.authorAvatar} className="w-8 h-8 rounded-full" />
                                     <div className="flex-1">
                                         <span className="text-sm font-bold block">{post.authorName}</span>
                                         {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}
@@ -516,7 +573,7 @@ export default function App() {
                          {joinedHobbyIds.includes(selectedHobby.id) ? (
                              <div className="flex gap-2 mb-8">
                                 <Button className="flex-1" onClick={() => { setSelectedPostHobbyId(selectedHobby.id); setView(ViewState.CREATE_POST); }}>Write a Post</Button>
-                                <button onClick={handleLeaveCommunity} className="px-4 bg-red-50 text-red-500 rounded-2xl border border-red-100 text-xs font-bold hover:bg-red-100">Leave</button>
+                                <button onClick={handleLeaveCommunity} className="px-4 bg-red-50 text-red-500 rounded-2xl border border-red-100 text-xs font-bold">Leave</button>
                              </div>
                          ) : (
                             <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}>Join Community</Button>

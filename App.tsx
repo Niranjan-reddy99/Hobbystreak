@@ -369,7 +369,7 @@ export default function App() {
       if (!currentUser || !content) return;
       const { error } = await supabase!.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
       if (!error) {
-          await fetchHobbiesAndPosts();
+          await fetchHobbiesAndPosts(); // Refresh to see comment
       }
   };
 
@@ -398,7 +398,6 @@ export default function App() {
 
   // --- RENDER ---
   const myCommunities = hobbies.filter(h => joinedHobbyIds.includes(h.id));
-
   if (isAppLoading) return <div className="min-h-screen bg-neutral-900 flex items-center justify-center"><Loader2 className="text-white animate-spin w-8 h-8"/></div>;
 
   return (
@@ -407,7 +406,7 @@ export default function App() {
         
         {/* HEADER */}
         <div className="flex justify-between items-center px-6 py-3 bg-slate-50 text-slate-900 text-xs font-bold sticky top-0 z-20">
-            <span>9:41</span><div className="flex gap-2"><Signal className="w-4 h-4"/><Wifi className="w-4 h-4"/><Battery className="w-4 h-4"/></div>
+            <span>9:41</span><div className="flex gap-2"><Signal className="w-4 h-4"/><Battery className="w-4 h-4"/></div>
         </div>
         {toast && <Toast message={toast.message} type={toast.type} />}
         {showConfetti && <Confetti />}
@@ -449,7 +448,7 @@ export default function App() {
                             return (
                             <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
                                 <div className="flex items-center gap-3 mb-3">
-                                    <img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" />
+                                    <img src={post.authorAvatar} className="w-8 h-8 rounded-full" />
                                     <div className="flex-1">
                                         <span className="text-sm font-bold block">{post.authorName}</span>
                                         {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}

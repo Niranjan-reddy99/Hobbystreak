@@ -5,7 +5,7 @@ import {
   Home, Compass, User as UserIcon, Plus, Heart, MessageCircle, 
   Check, ArrowLeft, X, LogOut, Flame, Calendar, 
   Bell, Loader2, Signal, Wifi, Battery, ChevronRight, Trophy, Users,
-  CheckCircle, Circle, Trash2, Send
+  CheckCircle, Circle, Trash2, RefreshCw, Send
 } from 'lucide-react';
 
 // ==========================================
@@ -14,6 +14,7 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
+// Memory Storage (Bypasses Browser Blocks)
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -56,8 +57,10 @@ interface Post {
 interface Task { id: string; title: string; date: string; completed: boolean; }
 
 // ==========================================
-// 3. COMPONENTS
+// 3. CONSTANTS & COMPONENTS
 // ==========================================
+const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false }];
+
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -70,6 +73,7 @@ const Confetti = () => (
         <div className="confetti-piece bg-red-500 left-[10%]"></div>
         <div className="confetti-piece bg-blue-500 left-[20%] delay-100"></div>
         <div className="confetti-piece bg-yellow-500 left-[30%] delay-200"></div>
+        <div className="confetti-piece bg-green-500 left-[40%]"></div>
     </div>
 );
 
@@ -223,6 +227,11 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const triggerConfetti = () => {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 2000);
+  };
+
   // --- ACTIONS ---
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -236,6 +245,7 @@ export default function App() {
         await loadUserProfile(data.session.user);
         setEmail(''); setPassword('');
         setView(ViewState.FEED);
+        showToast("Welcome back!");
     }
     setIsLoading(false);
   };
@@ -247,8 +257,8 @@ export default function App() {
       if (error) showToast(error.message, 'error');
       else if (data.user) {
           await supabase.from('profiles').insert({ id: data.user.id, name, email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}` });
-          if(data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
-          else { showToast("Check email!"); setView(ViewState.LOGIN); }
+          if (data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
+          else { showToast("Account created! Log in."); setView(ViewState.LOGIN); }
       }
       setIsLoading(false);
   };
@@ -347,6 +357,14 @@ export default function App() {
       if (!error) setTasks(prev => prev.filter(t => t.id !== id));
   };
 
+  const handleLogout = async () => {
+      if (supabase) await supabase.auth.signOut();
+      setCurrentUser(null);
+      setJoinedHobbyIds([]);
+      setEmail(''); setPassword(''); setName('');
+      setView(ViewState.LOGIN);
+  };
+
   // --- RENDER ---
   const myCommunities = hobbies.filter(h => joinedHobbyIds.includes(h.id));
   if (isAppLoading) return <div className="min-h-screen bg-neutral-900 flex items-center justify-center"><Loader2 className="text-white animate-spin w-8 h-8"/></div>;
@@ -431,8 +449,11 @@ export default function App() {
             {view === ViewState.EXPLORE && (
                 <div className="px-6 pt-4">
                     <div className="flex justify-between items-center mb-4"><h1 className="text-xl font-bold">Explore</h1><button onClick={() => setView(ViewState.CREATE_HOBBY)}><Plus className="bg-slate-900 text-white p-2 rounded-full w-8 h-8" /></button></div>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 pb-2">
+                        {Object.values(HobbyCategory).map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory === cat ? 'bg-slate-900 text-white' : 'bg-white border'}`}>{cat}</button>)}
+                    </div>
                     <div className="space-y-3">
-                        {hobbies.map(h => {
+                        {hobbies.filter(h => selectedCategory === HobbyCategory.ALL || h.category === selectedCategory).map(h => {
                             const isJoined = joinedHobbyIds.includes(h.id);
                             return (
                                 <div key={h.id} className="bg-white p-4 rounded-3xl flex items-center gap-4 shadow-sm" onClick={() => { setSelectedHobby(h); setView(ViewState.COMMUNITY_DETAILS); }}>
@@ -490,7 +511,7 @@ export default function App() {
                             {myCommunities.map(h => (
                                 <button key={h.id} onClick={() => setSelectedPostHobbyId(h.id)} className={`px-4 py-2 rounded-xl text-xs border whitespace-nowrap transition-colors ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}>{h.icon} {h.name}</button>
                             ))}
-                            {myCommunities.length === 0 && <p className="text-xs text-red-400">Join a community first!</p>}
+                            {myCommunities.length === 0 && <p className="text-xs text-slate-400 p-2 border border-dashed rounded w-full">Join a community or post globally.</p>}
                         </div>
                     </div>
                     <Button className="w-full mt-8" onClick={() => { const c = (document.getElementById('post-input') as HTMLTextAreaElement).value; if(c) handleCreatePost(c); }}>Post</Button>

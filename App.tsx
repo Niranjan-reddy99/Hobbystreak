@@ -9,8 +9,12 @@ import {
 } from 'lucide-react';
 
 // ==========================================
-// 1. MEMORY STORAGE ADAPTER
+// 1. CONFIGURATION
 // ==========================================
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+// MEMORY STORAGE (Bypasses Browser Blocks)
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -18,17 +22,11 @@ const memoryStorage = {
   removeItem: (key: string) => { delete memoryStorage.store[key]; }
 };
 
-// ==========================================
-// 2. CONFIGURATION
-// ==========================================
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
 const supabase = (supabaseUrl && supabaseKey) 
   ? createClient(supabaseUrl, supabaseKey, {
       auth: {
         storage: memoryStorage,
-        persistSession: false,  
+        persistSession: false, 
         autoRefreshToken: false,
         detectSessionInUrl: false
       }
@@ -36,7 +34,7 @@ const supabase = (supabaseUrl && supabaseKey)
   : null;
 
 // ==========================================
-// 3. TYPES
+// 2. TYPES
 // ==========================================
 enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS }
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
@@ -54,7 +52,7 @@ interface Post { id: string; userId: string; hobbyId: string | null; content: st
 interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
 
 // ==========================================
-// 4. CONSTANTS & COMPONENTS
+// 3. CONSTANTS & COMPONENTS
 // ==========================================
 const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
 const LEADERBOARD_USERS = [
@@ -94,19 +92,19 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
 };
 
 // ==========================================
-// 5. MAIN APP
+// 4. MAIN APP
 // ==========================================
 export default function App() {
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   
-  // Data State
+  // Data
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
 
-  // Inputs & Selections
+  // Inputs
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -127,19 +125,8 @@ export default function App() {
         await fetchHobbiesAndPosts();
         await fetchLeaderboard();
         
-        // Try to recover session
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                await loadUserProfile(session.user.id);
-                setView(ViewState.FEED);
-            }
-        } catch (e) { console.log("Session recovery failed", e); }
-        
-        const savedTasks = localStorage.getItem('hobbystreak_tasks');
-        if (savedTasks) setTasks(JSON.parse(savedTasks));
-        else setTasks(INITIAL_TASKS);
-
+        // Mock Tasks
+        setTasks(INITIAL_TASKS);
         setIsAppLoading(false);
     };
     initApp();
@@ -216,13 +203,9 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        // IMPORTANT: Manually load profile, NO RELOAD
         await loadUserProfile(data.session.user.id);
-        
-        // CLEAR FORM DATA ON SUCCESS
         setEmail('');
         setPassword('');
-        
         setView(ViewState.FEED);
         showToast("Welcome back!");
     }
@@ -240,14 +223,10 @@ export default function App() {
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
               stats: { points: 0, totalStreak: 0 }
           });
-          
           showToast("Account created! Log in.");
-          
-          // CLEAR FORM
           setEmail('');
           setPassword('');
           setName('');
-          
           setView(ViewState.LOGIN);
       }
       setIsLoading(false);
@@ -255,36 +234,38 @@ export default function App() {
 
   const handleLogout = async () => {
       if (supabase) await supabase.auth.signOut();
-      
       setCurrentUser(null);
-      
-      // FIXED: CLEAR ALL INPUT STATES SO THEY DON'T PERSIST
       setEmail('');
       setPassword('');
       setName('');
-      
       setView(ViewState.LOGIN);
   };
 
-  // --- GLOBAL POSTING FUNCTION ---
+  // --- FORCE POST (NO LOGIN CHECK) ---
   const handleCreatePost = async (content: string) => {
-      if (!currentUser || !supabase) return showToast("Log in first!", "error");
+      if (!supabase) return showToast("DB Not Connected", "error");
+      
+      // Try to get ID, but if null, send NULL (Anonymous)
+      const uid = currentUser?.id || null;
       
       const { error } = await supabase.from('posts').insert({
-          user_id: currentUser.id,
-          hobby_id: null, 
+          user_id: uid,
+          hobby_id: null,
           content
       });
 
       if (!error) {
-          const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
-          await supabase.from('profiles').update({ stats: newStats }).eq('id', currentUser.id);
-          setCurrentUser({ ...currentUser, stats: newStats });
+          // Only update stats if we have a user
+          if (uid && currentUser) {
+              const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
+              await supabase.from('profiles').update({ stats: newStats }).eq('id', uid);
+              setCurrentUser({ ...currentUser, stats: newStats });
+          }
           
           await fetchHobbiesAndPosts();
           setView(ViewState.FEED);
           triggerConfetti();
-          showToast("Posted! +20 XP");
+          showToast("Posted!");
       } else {
           showToast("Error: " + error.message, 'error');
       }
@@ -292,7 +273,7 @@ export default function App() {
 
   const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {
       setIsLoading(true);
-      if (!currentUser || !supabase) return;
+      if (!supabase) return;
 
       const { data, error } = await supabase.from('hobbies').insert({
           name: n, description: d, category: c, icon: '🌟', member_count: 1, 
@@ -330,7 +311,6 @@ export default function App() {
                 <div className="h-full flex flex-col justify-center px-8">
                     <h1 className="text-3xl font-bold text-center mb-10">Hobbystreak</h1>
                     {!supabase && <div className="p-3 bg-red-100 text-red-700 text-xs mb-4 rounded">Supabase keys missing</div>}
-                    <div className="text-[10px] text-gray-400 text-center mb-4">Memory Auth Active</div>
                     <div className="space-y-4">
                         <input className="w-full p-4 bg-white rounded-2xl" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
                         <input className="w-full p-4 bg-white rounded-2xl" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
@@ -381,7 +361,7 @@ export default function App() {
                     
                     <div className="mt-4 mb-6">
                         <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                           📝 Posting to <b>General Feed</b> (Global Post)
+                           📝 Posting to <b>General Feed</b>
                         </p>
                     </div>
 
@@ -395,13 +375,13 @@ export default function App() {
 
             {/* Omitted other views for brevity but accessible via NAV */}
             {view === ViewState.EXPLORE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Testing)</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list</p></div>
             )}
             {view === ViewState.PROFILE && (
                  <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={handleLogout}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name || "Guest"}</h2></div>
             )}
             {view === ViewState.SCHEDULE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Testing)</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks</p></div>
             )}
             {view === ViewState.CREATE_HOBBY && (
                  <div className="px-6 pt-12 h-full bg-white"><div className="flex justify-between mb-6"><h1 className="text-xl font-bold">Create Community</h1><button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button></div><p className="text-sm text-gray-400">Disabled during test mode.</p></div>

@@ -149,7 +149,7 @@ export default function App() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
             const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-            
+          
             // Clean slate: Don't load hobbies from local storage to avoid "Ghost" mock data
             setCurrentUser({
                 id: session.user.id,
@@ -273,10 +273,10 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.session.user.id).single();
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', id).single();
         
         setCurrentUser({
-            id: data.session.user.id,
+            id: id,
             name: profile?.name || 'User',
             email: email,
             avatar: profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.session.user.id}`,

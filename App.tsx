@@ -156,9 +156,9 @@ export default function App() {
               name: h.name,
               description: h.description,
               category: h.category,
-              memberCount: h.member_count || 0,
+              memberCount: h.member_count || 0, // MAP HERE
               icon: h.icon || '✨',
-              image: h.image_url || 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853'
+              image: h.image_url || 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853' // MAP HERE
           })));
       }
 
@@ -263,10 +263,10 @@ export default function App() {
           // 2. Join
           await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
           
-          // 3. Refresh Data
+          // 3. REFRESH LOCAL STATE MANUALLY
           setJoinedHobbyIds(prev => [...prev, data.id]);
           setSelectedPostHobbyId(data.id);
-          await fetchHobbiesAndPosts();
+          await fetchHobbiesAndPosts(); // Get new list from DB
           
           setView(ViewState.EXPLORE);
           showToast("Created & Joined!");
@@ -476,7 +476,7 @@ export default function App() {
                                 <button 
                                     key={h.id} 
                                     onClick={() => setSelectedPostHobbyId(h.id)}
-                                    className={`px-4 py-2 rounded-xl text-xs border whitespace-nowrap ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}
+                                    className={`px-4 py-2 rounded-xl text-xs border whitespace-nowrap transition-colors ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}
                                 >
                                     {h.icon} {h.name}
                                 </button>
@@ -493,7 +493,7 @@ export default function App() {
 
             {view === ViewState.PROFILE && (
                 <div className="px-6 pt-4">
-                     <div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={() => supabase?.auth.signOut().then(() => window.location.reload())}><LogOut className="w-5 h-5 text-red-500" /></button></div>
+                     <div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={() => supabase?.auth.signOut()}><LogOut className="w-5 h-5 text-red-500" /></button></div>
                      <div className="text-center mb-8"><h2 className="text-xl font-bold">{currentUser?.name}</h2><p className="text-sm text-slate-400">{currentUser?.email}</p></div>
                      <h3 className="font-bold text-sm mb-4">Joined Communities</h3>
                      <div className="space-y-3">
@@ -505,7 +505,7 @@ export default function App() {
                 </div>
             )}
 
-            {/* SCHEDULE VIEW */}
+            {/* SCHEDULE */}
             {view === ViewState.SCHEDULE && (
                 <div className="px-6 pt-4 h-full flex flex-col">
                     <h1 className="text-xl font-bold mb-6">Schedule</h1>

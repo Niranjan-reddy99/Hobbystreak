@@ -5,7 +5,7 @@ import {
   Home, Compass, User as UserIcon, Plus, Heart, MessageCircle, 
   Check, ArrowLeft, X, LogOut, Flame, Calendar, 
   Bell, Loader2, Signal, Wifi, Battery, ChevronRight, Trophy, Users,
-  CheckCircle, Circle, Trash2, RefreshCw, Send
+  CheckCircle, Circle, Trash2, Send
 } from 'lucide-react';
 
 // ==========================================
@@ -14,7 +14,6 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Memory Storage (Bypasses Browser Blocks)
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -57,10 +56,8 @@ interface Post {
 interface Task { id: string; title: string; date: string; completed: boolean; }
 
 // ==========================================
-// 3. CONSTANTS & COMPONENTS
+// 3. COMPONENTS
 // ==========================================
-const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false }];
-
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -83,7 +80,7 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
     primary: "bg-slate-900 text-white shadow-lg shadow-slate-900/20",
     secondary: "bg-white text-slate-900 border border-slate-200",
     ghost: "bg-transparent text-slate-500 hover:bg-slate-100",
-    danger: "bg-red-50 text-red-500 border border-red-100 hover:bg-red-100"
+    danger: "bg-red-50 text-red-500 border border-red-100 hover:bg-red-50"
   };
   return (
     <button onClick={onClick} disabled={disabled || isLoading} className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${className}`}>
@@ -114,7 +111,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [selectedPostHobbyId, setSelectedPostHobbyId] = useState<string>('');
-  const [expandedPostId, setExpandedPostId] = useState<string | null>(null); // For comments
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -143,30 +140,25 @@ export default function App() {
   // --- DATA LOADING ---
   const loadUserProfile = async (user: any) => {
       if (!supabase) return;
-      
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      if (profile) {
-          setCurrentUser({
-              id: user.id,
-              name: profile.name,
-              email: profile.email,
-              avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-              stats: profile.stats || { totalStreak: 0, points: 0 }
-          });
-      } else {
-          // Fallback
-          setCurrentUser({
-              id: user.id,
-              name: user.email?.split('@')[0],
-              email: user.email,
-              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-              stats: { totalStreak: 0, points: 0 }
-          });
-      }
+      
+      // Fallback Profile
+      const profileData = profile || {
+          name: user.email?.split('@')[0] || 'User',
+          email: user.email || '',
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+          stats: { totalStreak: 0, points: 0 }
+      };
+
+      setCurrentUser({ id: user.id, ...profileData });
 
       // Load Joins
       const { data: joined } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', user.id);
-      if (joined) setJoinedHobbyIds(joined.map((j: any) => j.hobby_id));
+      if (joined) {
+          const ids = joined.map((j: any) => j.hobby_id);
+          setJoinedHobbyIds(ids);
+          if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
+      }
       
       // Load Tasks
       fetchTasks(user.id);
@@ -198,14 +190,13 @@ export default function App() {
               authors = data || [];
           }
 
-          // Fetch comments for these posts
+          // Fetch comments
           const { data: commentsData } = await supabase.from('comments').select('*');
 
           setPosts(postsData.map((p: any) => {
               const author = authors.find((a: any) => a.id === p.user_id);
               const postComments = commentsData?.filter((c:any) => c.post_id === p.id) || [];
               
-              // Map comments with author names (simplified for MVP)
               const mappedComments = postComments.map((c: any) => ({
                   id: c.id, userId: c.user_id, content: c.content,
                   authorName: authors.find(a => a.id === c.user_id)?.name || 'User'
@@ -241,7 +232,7 @@ export default function App() {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) showToast(error.message, 'error');
     else if (data.session) {
-        await supabase.from('profiles').upsert({ id: data.session.user.id, email, name: email.split('@')[0] });
+        await supabase.from('profiles').upsert({ id: data.session.user.id, email, name: email.split('@')[0], stats: { points: 0, totalStreak: 0 } });
         await loadUserProfile(data.session.user);
         setEmail(''); setPassword('');
         setView(ViewState.FEED);
@@ -256,11 +247,19 @@ export default function App() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) showToast(error.message, 'error');
       else if (data.user) {
-          await supabase.from('profiles').insert({ id: data.user.id, name, email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}` });
-          if (data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
+          await supabase.from('profiles').insert({ id: data.user.id, name, email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`, stats: { points: 0, totalStreak: 0 } });
+          if(data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
           else { showToast("Account created! Log in."); setView(ViewState.LOGIN); }
       }
       setIsLoading(false);
+  };
+
+  const handleLogout = async () => {
+      if (supabase) await supabase.auth.signOut();
+      setCurrentUser(null);
+      setJoinedHobbyIds([]);
+      setEmail(''); setPassword(''); setName('');
+      setView(ViewState.LOGIN);
   };
 
   // --- COMMUNITY ACTIONS ---
@@ -281,14 +280,30 @@ export default function App() {
 
   const handleLeaveCommunity = async () => {
       if (!currentUser || !selectedHobby) return;
-      const { error } = await supabase!.from('user_hobbies').delete().match({ user_id: currentUser.id, hobby_id: selectedHobby.id });
+      
+      // 1. Delete from DB
+      const { error } = await supabase!
+          .from('user_hobbies')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('hobby_id', selectedHobby.id);
+
       if (!error) {
+          // 2. Update Local State
           setJoinedHobbyIds(prev => prev.filter(id => id !== selectedHobby.id));
-          // Decrement DB count
-          await supabase!.from('hobbies').update({ member_count: Math.max(0, selectedHobby.memberCount - 1) }).eq('id', selectedHobby.id);
-          fetchHobbiesAndPosts();
+          
+          // 3. Decrement DB count
+          const newCount = Math.max(0, selectedHobby.memberCount - 1);
+          await supabase!.from('hobbies').update({ member_count: newCount }).eq('id', selectedHobby.id);
+          
+          await fetchHobbiesAndPosts();
+          
+          // 4. Reset Selection and Redirect
+          if (selectedPostHobbyId === selectedHobby.id) setSelectedPostHobbyId('');
           setView(ViewState.EXPLORE);
           showToast("Left community");
+      } else {
+          showToast("Error leaving", "error");
       }
   };
 
@@ -303,6 +318,7 @@ export default function App() {
           setJoinedHobbyIds(prev => [...prev, data.id]);
           await fetchHobbiesAndPosts();
           setView(ViewState.EXPLORE);
+          showToast("Created!");
       }
       setIsLoading(false);
   };
@@ -314,14 +330,14 @@ export default function App() {
       const { error } = await supabase!.from('posts').insert({ user_id: uid, hobby_id: selectedPostHobbyId || null, content });
       if (!error) {
           await fetchHobbiesAndPosts();
-          setView(ViewState.FEED);
+          if (view !== ViewState.COMMUNITY_DETAILS) setView(ViewState.FEED);
+          triggerConfetti();
           showToast("Posted!");
       }
   };
 
   const handleLike = async (post: Post) => {
       if (!supabase) return;
-      // Optimistic update
       setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: p.likes + 1 } : p));
       await supabase.from('posts').update({ likes: post.likes + 1 }).eq('id', post.id);
   };
@@ -330,7 +346,7 @@ export default function App() {
       if (!currentUser || !content) return;
       const { error } = await supabase!.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
       if (!error) {
-          await fetchHobbiesAndPosts(); // Refresh to show new comment
+          await fetchHobbiesAndPosts();
       }
   };
 
@@ -357,14 +373,6 @@ export default function App() {
       if (!error) setTasks(prev => prev.filter(t => t.id !== id));
   };
 
-  const handleLogout = async () => {
-      if (supabase) await supabase.auth.signOut();
-      setCurrentUser(null);
-      setJoinedHobbyIds([]);
-      setEmail(''); setPassword(''); setName('');
-      setView(ViewState.LOGIN);
-  };
-
   // --- RENDER ---
   const myCommunities = hobbies.filter(h => joinedHobbyIds.includes(h.id));
   if (isAppLoading) return <div className="min-h-screen bg-neutral-900 flex items-center justify-center"><Loader2 className="text-white animate-spin w-8 h-8"/></div>;
@@ -378,6 +386,7 @@ export default function App() {
             <span>9:41</span><div className="flex gap-2"><Signal className="w-4 h-4"/><Battery className="w-4 h-4"/></div>
         </div>
         {toast && <Toast message={toast.message} type={toast.type} />}
+        {showConfetti && <Confetti />}
 
         <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
             
@@ -411,9 +420,17 @@ export default function App() {
                 <div className="px-6 pt-4">
                     <div className="flex justify-between items-center mb-6"><h1 className="text-xl font-bold">Home</h1><Bell className="w-5 h-5" /></div>
                     <div className="space-y-4">
-                        {posts.map(post => (
+                        {posts.map(post => {
+                            const postHobby = hobbies.find(h => h.id === post.hobbyId);
+                            return (
                             <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
-                                <div className="flex items-center gap-3 mb-3"><img src={post.authorAvatar} className="w-8 h-8 rounded-full" /><span className="text-sm font-bold">{post.authorName}</span></div>
+                                <div className="flex items-center gap-3 mb-3">
+                                    <img src={post.authorAvatar} className="w-8 h-8 rounded-full" />
+                                    <div className="flex-1">
+                                        <span className="text-sm font-bold block">{post.authorName}</span>
+                                        {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}
+                                    </div>
+                                </div>
                                 <p className="text-sm mb-3">{post.content}</p>
                                 
                                 {/* Likes & Comments */}
@@ -441,7 +458,8 @@ export default function App() {
                                     </div>
                                 )}
                             </div>
-                        ))}
+                        )})}
+                        {posts.length === 0 && <p className="text-center text-slate-400 text-sm mt-10">No posts yet.</p>}
                     </div>
                 </div>
             )}
@@ -464,6 +482,42 @@ export default function App() {
                             );
                         })}
                     </div>
+                </div>
+            )}
+
+            {view === ViewState.CREATE_HOBBY && (
+                <div className="px-6 pt-12 h-full bg-white">
+                    <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">Create Community</h1><button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button></div>
+                    <div className="space-y-4">
+                        <input id="h-name" className="w-full p-4 bg-slate-50 rounded-2xl" placeholder="Name" />
+                        <textarea id="h-desc" className="w-full p-4 h-24 bg-slate-50 rounded-2xl" placeholder="Description" />
+                        <select id="h-cat" className="w-full p-4 bg-slate-50 rounded-2xl">
+                            {Object.values(HobbyCategory).filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <Button className="w-full mt-4" onClick={() => {
+                            const n = (document.getElementById('h-name') as HTMLInputElement).value;
+                            const d = (document.getElementById('h-desc') as HTMLTextAreaElement).value;
+                            const c = (document.getElementById('h-cat') as HTMLSelectElement).value as HobbyCategory;
+                            if(n && d) handleCreateHobby(n, d, c);
+                        }} isLoading={isLoading}>Create</Button>
+                    </div>
+                </div>
+            )}
+
+            {view === ViewState.CREATE_POST && (
+                <div className="px-6 pt-12 h-full bg-white">
+                    <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">New Post</h1><button onClick={() => setView(ViewState.FEED)}><X className="w-6 h-6" /></button></div>
+                    <textarea id="post-input" className="w-full h-32 bg-slate-50 p-4 rounded-2xl resize-none text-sm outline-none" placeholder="Share your progress..." />
+                    <div className="mt-4">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Select Community</label>
+                        <div className="flex gap-2 overflow-x-auto pb-4 mt-2">
+                            {myCommunities.map(h => (
+                                <button key={h.id} onClick={() => setSelectedPostHobbyId(h.id)} className={`px-4 py-2 rounded-xl text-xs border whitespace-nowrap transition-colors ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}>{h.icon} {h.name}</button>
+                            ))}
+                            {myCommunities.length === 0 && <p className="text-xs text-slate-400 p-2 border border-dashed rounded w-full">Join a community or post globally.</p>}
+                        </div>
+                    </div>
+                    <Button className="w-full mt-8" onClick={() => { const c = (document.getElementById('post-input') as HTMLTextAreaElement).value; if(c) handleCreatePost(c); }}>Post Now</Button>
                 </div>
             )}
 
@@ -493,6 +547,10 @@ export default function App() {
                                  <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                      <div className="flex items-center gap-2 mb-2"><img src={post.authorAvatar} className="w-6 h-6 rounded-full" /><span className="text-xs font-bold">{post.authorName}</span></div>
                                      <p className="text-sm text-slate-700">{post.content}</p>
+                                     <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
+                                         <button onClick={() => handleLike(post)} className="flex items-center gap-1 hover:text-red-500"><Heart className="w-4 h-4"/> {post.likes}</button>
+                                         <span className="flex items-center gap-1"><MessageCircle className="w-4 h-4"/> {post.comments.length}</span>
+                                     </div>
                                  </div>
                              ))}
                              {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">Be the first to post!</p>}
@@ -501,25 +559,16 @@ export default function App() {
                 </div>
             )}
 
-            {view === ViewState.CREATE_POST && (
-                <div className="px-6 pt-12 h-full bg-white">
-                    <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">New Post</h1><button onClick={() => setView(ViewState.FEED)}><X className="w-6 h-6" /></button></div>
-                    <textarea id="post-input" className="w-full h-32 bg-slate-50 p-4 rounded-2xl resize-none text-sm outline-none" placeholder="Share your progress..." />
-                    <div className="mt-4">
-                        <label className="text-xs font-bold text-slate-400 uppercase">Community</label>
-                        <div className="flex gap-2 overflow-x-auto pb-4 mt-2">
-                            {myCommunities.map(h => (
-                                <button key={h.id} onClick={() => setSelectedPostHobbyId(h.id)} className={`px-4 py-2 rounded-xl text-xs border whitespace-nowrap transition-colors ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}>{h.icon} {h.name}</button>
-                            ))}
-                            {myCommunities.length === 0 && <p className="text-xs text-slate-400 p-2 border border-dashed rounded w-full">Join a community or post globally.</p>}
-                        </div>
-                    </div>
-                    <Button className="w-full mt-8" onClick={() => { const c = (document.getElementById('post-input') as HTMLTextAreaElement).value; if(c) handleCreatePost(c); }}>Post</Button>
-                </div>
-            )}
-
-            {view === ViewState.CREATE_HOBBY && (
-                 <div className="px-6 pt-12 h-full bg-white"><div className="flex justify-between mb-6"><h1 className="text-xl font-bold">Create Community</h1><button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button></div><div className="space-y-4"><input id="h-name" className="w-full p-4 bg-slate-50 rounded-2xl" placeholder="Name" /><textarea id="h-desc" className="w-full p-4 h-24 bg-slate-50 rounded-2xl" placeholder="Description" /><select id="h-cat" className="w-full p-4 bg-slate-50 rounded-2xl">{Object.values(HobbyCategory).filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}</select><Button className="w-full mt-4" onClick={() => { const n = (document.getElementById('h-name') as HTMLInputElement).value; const d = (document.getElementById('h-desc') as HTMLTextAreaElement).value; const c = (document.getElementById('h-cat') as HTMLSelectElement).value as HobbyCategory; if(n && d) handleCreateHobby(n, d, c); }} isLoading={isLoading}>Create</Button></div></div>
+            {view === ViewState.PROFILE && (
+                 <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={handleLogout}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name || "Guest"}</h2>
+                 <h3 className="font-bold text-sm mb-4 mt-8">Joined Communities</h3>
+                 <div className="space-y-3">
+                     {myCommunities.map(h => (
+                         <div key={h.id} className="bg-white p-4 rounded-2xl flex gap-3 shadow-sm"><span className="text-2xl">{h.icon}</span><p className="font-bold text-sm my-auto">{h.name}</p></div>
+                     ))}
+                     {myCommunities.length === 0 && <p className="text-slate-400 text-sm">None yet.</p>}
+                 </div>
+                 </div>
             )}
 
             {view === ViewState.SCHEDULE && (

@@ -124,7 +124,6 @@ export default function App() {
   useEffect(() => {
     const initApp = async () => {
         if (!supabase) return;
-        await fetchHobbiesAndPosts();
         
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -137,11 +136,7 @@ export default function App() {
             }
         } catch (e) { console.log("Session check failed", e); }
         
-        // Load tasks from Local Storage to prevent DB errors for now
-        const savedTasks = localStorage.getItem('hobbystreak_tasks');
-        if (savedTasks) setTasks(JSON.parse(savedTasks));
-        else setTasks(INITIAL_TASKS);
-
+        // Initial load of tasks will happen in loadUserProfile
         setIsAppLoading(false);
     };
     initApp();
@@ -163,10 +158,12 @@ export default function App() {
 
       const { data: joined } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', user.id);
       if (joined) {
-          const ids = joined.map((j: any) => j.hobby_id);
-          setJoinedHobbyIds(ids);
-          if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
+          setJoinedHobbyIds(joined.map((j: any) => j.hobby_id));
       }
+
+      // Load Tasks for this user
+      const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', user.id);
+      if (tasksData) setTasks(tasksData);
   };
 
   const fetchHobbiesAndPosts = async (currentUserId: string | null) => {
@@ -363,36 +360,38 @@ export default function App() {
       }
   };
 
-  // --- SCHEDULE LOGIC (UPDATED: Confetti + Add Task) ---
-  const handleAddTask = (title: string) => {
-      const updated = [...tasks, { id: `t${Date.now()}`, title, date: selectedDate, completed: false }];
-      setTasks(updated);
-      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
-      showToast("Task added");
+  // --- SCHEDULE LOGIC (NEW: Add, Toggle, Delete, Confetti) ---
+  const handleAddTask = async (title: string) => {
+      if (!currentUser) return showToast("Login to add tasks");
+      
+      const { data, error } = await supabase.from('tasks').insert({ 
+          user_id: currentUser.id, title, date: selectedDate, completed: false 
+      }).select().single();
+
+      if (data && !error) {
+          setTasks(prev => [...prev, data]);
+          showToast("Task added");
+      }
   };
 
-  const handleToggleTask = (id: string) => {
-      const updated = tasks.map(t => {
-          if (t.id === id) {
-              if (!t.completed) triggerConfetti(); // 🎉 Confetti when completing!
-              return { ...t, completed: !t.completed };
-          }
-          return t;
-      });
-      setTasks(updated);
-      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
+  const handleToggleTask = async (task: Task) => {
+      const isCompleting = !task.completed;
+      if (isCompleting) triggerConfetti(); // 🎉 Confetti Effect
+
+      // Optimistic Update
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: isCompleting } : t));
+      
+      await supabase.from('tasks').update({ completed: isCompleting }).eq('id', task.id);
   };
 
-  const handleDeleteTask = (id: string) => {
-      const updated = tasks.filter(t => t.id !== id);
-      setTasks(updated);
-      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
+  const handleDeleteTask = async (id: string) => {
+      setTasks(prev => prev.filter(t => t.id !== id));
+      await supabase.from('tasks').delete().eq('id', id);
   };
 
   const getWeekDays = () => {
       const days = [];
       const today = new Date();
-      // Start from today
       for (let i = 0; i < 7; i++) {
           const d = new Date(today);
           d.setDate(today.getDate() + i);
@@ -603,12 +602,7 @@ export default function App() {
                                      <div className="flex items-center gap-2 mb-2"><img src={post.authorAvatar} className="w-6 h-6 rounded-full" /><span className="text-xs font-bold">{post.authorName}</span></div>
                                      <p className="text-sm text-slate-700">{post.content}</p>
                                      <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
-                                         <button 
-                                            onClick={() => handleLike(post)} 
-                                            className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
-                                         >
-                                            <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}/> {post.likes}
-                                         </button>
+                                         <button onClick={() => handleLike(post)} className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}><Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}/> {post.likes}</button>
                                          <button onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} className="flex items-center gap-1 hover:text-blue-500"><MessageCircle className="w-4 h-4"/> {post.comments.length}</button>
                                      </div>
                                      {/* Nested Comments in Community View */}
@@ -616,25 +610,12 @@ export default function App() {
                                         <div className="mt-4 pt-4 border-t border-slate-50 animate-in slide-in-from-top-2">
                                             <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
                                                 {post.comments.map(c => (
-                                                    <div key={c.id} className="text-xs bg-slate-50 p-2 rounded">
-                                                        <span className="font-bold text-slate-700">{c.authorName}:</span> {c.content}
-                                                    </div>
+                                                    <div key={c.id} className="text-xs bg-slate-50 p-2 rounded"><span className="font-bold">{c.authorName}:</span> {c.content}</div>
                                                 ))}
                                                 {post.comments.length === 0 && <p className="text-xs text-slate-300">No comments yet.</p>}
                                             </div>
                                             <div className="flex gap-2">
-                                                <input 
-                                                    id={`comm-comm-${post.id}`} 
-                                                    className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none focus:ring-1 ring-slate-200" 
-                                                    placeholder="Write a reply..." 
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            const target = e.target as HTMLInputElement;
-                                                            handleComment(post.id, target.value);
-                                                            target.value = '';
-                                                        }
-                                                    }}
-                                                />
+                                                <input id={`comm-comm-${post.id}`} className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none" placeholder="Reply..." onKeyDown={(e) => { if (e.key === 'Enter') { const target = e.target as HTMLInputElement; handleComment(post.id, target.value); target.value = ''; } }} />
                                                 <button onClick={() => {
                                                     const input = document.getElementById(`comm-comm-${post.id}`) as HTMLInputElement;
                                                     if (input.value) { handleComment(post.id, input.value); input.value = ''; }
@@ -662,7 +643,7 @@ export default function App() {
                  </div>
             )}
 
-            {/* --- UPDATED SCHEDULE VIEW (Calendar + Add Task + Strikethrough + Confetti) --- */}
+            {/* --- UPDATED SCHEDULE VIEW (Calendar Strip + Add Task + Confetti) --- */}
             {view === ViewState.SCHEDULE && (
                 <div className="px-6 pt-4 h-full flex flex-col">
                     <h1 className="text-xl font-bold mb-6">Schedule</h1>
@@ -674,11 +655,7 @@ export default function App() {
                             const isSelected = selectedDate === dateStr;
                             const dayName = ['S','M','T','W','T','F','S'][d.getDay()];
                             return (
-                                <button 
-                                    key={i} 
-                                    onClick={() => setSelectedDate(dateStr)} 
-                                    className={`w-10 h-14 border rounded-xl flex flex-col items-center justify-center text-xs transition-colors ${isSelected ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400'}`}
-                                >
+                                <button key={i} onClick={() => setSelectedDate(dateStr)} className={`w-10 h-14 border rounded-xl flex flex-col items-center justify-center text-xs transition-colors ${isSelected ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400'}`}>
                                     <span className="text-[10px] font-medium">{dayName}</span>
                                     <span className="font-bold text-sm">{d.getDate()}</span>
                                 </button>
@@ -690,31 +667,20 @@ export default function App() {
                     <div className="flex-1 overflow-y-auto space-y-2">
                         {tasks.filter(t => t.date === selectedDate).map(t => (
                             <div key={t.id} className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm group">
-                                <button onClick={() => handleToggleTask(t.id)}>
+                                <button onClick={() => handleToggleTask(t)}>
                                     {t.completed ? <CheckCircle className="w-6 h-6 text-green-500"/> : <Circle className="w-6 h-6 text-slate-300"/>}
                                 </button>
                                 {/* Strikethrough style */}
-                                <span className={`flex-1 text-sm ${t.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                                    {t.title}
-                                </span>
-                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto text-slate-300 hover:text-red-500">
-                                    <Trash2 className="w-4 h-4"/>
-                                </button>
+                                <span className={`flex-1 text-sm ${t.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
+                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
                             </div>
                         ))}
-                        {tasks.filter(t => t.date === selectedDate).length === 0 && (
-                            <div className="text-center py-10">
-                                <p className="text-sm text-slate-400">No tasks for today.</p>
-                            </div>
-                        )}
+                        {tasks.filter(t => t.date === selectedDate).length === 0 && <p className="text-center text-slate-400 text-xs mt-10">No events.</p>}
                     </div>
                     
                     {/* Add Task Input */}
                     <div className="bg-white p-2 rounded-2xl shadow-lg border flex gap-2 mt-4 absolute bottom-24 left-6 right-6">
-                        <input 
-                            id="new-task" 
-                            className="flex-1 pl-4 outline-none text-sm bg-transparent" 
-                            placeholder="Add a new task..." 
+                        <input id="new-task" className="flex-1 pl-4 outline-none text-sm bg-transparent" placeholder="Add event..." 
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                     const target = e.target as HTMLInputElement;
@@ -722,15 +688,10 @@ export default function App() {
                                 }
                             }}
                         />
-                        <button 
-                            onClick={() => { 
-                                const input = document.getElementById('new-task') as HTMLInputElement; 
-                                if(input.value) { handleAddTask(input.value); input.value = ''; } 
-                            }} 
-                            className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-700 transition-colors"
-                        >
-                            <Plus className="w-5 h-5"/>
-                        </button>
+                        <button onClick={() => { 
+                            const input = document.getElementById('new-task') as HTMLInputElement; 
+                            if(input.value) { handleAddTask(input.value); input.value = ''; } 
+                        }} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-700 transition-colors"><Plus className="w-5 h-5"/></button>
                     </div>
                 </div>
             )}

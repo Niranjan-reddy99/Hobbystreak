@@ -385,33 +385,43 @@ export default function App() {
             )}
 
             {view === ViewState.FEED && (
-                <div className="px-6 pt-4">
-                    <div className="flex justify-between items-center mb-6"><h1 className="text-xl font-bold">Home</h1><Bell className="w-5 h-5" /></div>
-                    <div className="bg-slate-900 text-white p-4 rounded-3xl mb-6 flex justify-between shadow-lg">
-                        <div className="flex items-center gap-3"><Flame className="w-8 h-8 text-orange-400" /><div><p className="text-xs text-slate-400">Streak</p><p className="text-lg font-bold">{currentUser?.stats.totalStreak || 0}</p></div></div>
-                        <div className="h-10 w-[1px] bg-white/20"></div>
-                        <div className="flex items-center gap-3"><Trophy className="w-8 h-8 text-yellow-400" /><div><p className="text-xs text-slate-400">Points</p><p className="text-lg font-bold">{currentUser?.stats.points || 0}</p></div></div>
-                    </div>
-                    <div className="space-y-4">
-                        {posts.map(post => {
-                            const postHobby = hobbies.find(h => h.id === post.hobbyId);
-                            return (
-                            <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" />
-                                    <div className="flex-1">
-                                        <span className="text-sm font-bold block">{post.authorName}</span>
-                                        {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}
-                                    </div>
-                                </div>
-                                <p className="text-sm mb-3">{post.content}</p>
-                                <div className="flex gap-4 text-slate-400 text-xs"><span className="flex items-center gap-1"><Heart className="w-4 h-4"/> {post.likes}</span></div>
-                            </div>
-                        )})}
-                        {posts.length === 0 && <p className="text-center text-slate-400 text-sm mt-10">No posts yet.</p>}
-                    </div>
-                </div>
-            )}
+                <div className="px-6 pt-4">
+                    <div className="flex justify-between items-center mb-6"><h1 className="text-xl font-bold">Home</h1><Bell className="w-5 h-5" /></div>
+                    <div className="bg-slate-900 text-white p-4 rounded-3xl mb-6 flex justify-between shadow-lg">
+                        <div className="flex items-center gap-3"><Flame className="w-8 h-8 text-orange-400" /><div><p className="text-xs text-slate-400">Streak</p><p className="text-lg font-bold">{currentUser?.stats.totalStreak || 0}</p></div></div>
+                        <div className="h-10 w-[1px] bg-white/20"></div>
+                        <div className="flex items-center gap-3"><Trophy className="w-8 h-8 text-yellow-400" /><div><p className="text-xs text-slate-400">Points</p><p className="text-lg font-bold">{currentUser?.stats.points || 0}</p></div></div>
+                    </div>
+                    <div className="space-y-4">
+                        {posts.map(post => {
+                            const postHobby = hobbies.find(h => h.id === post.hobbyId);
+                            return (
+                            <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" />
+                                    <div className="flex-1">
+                                        <span className="text-sm font-bold block">{post.authorName}</span>
+                                        {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}
+                                    </div>
+                                </div>
+                                <p className="text-sm mb-3">{post.content}</p>
+                                
+                                {/* --- THIS IS THE NEW LIKE BUTTON --- */}
+                                <div className="flex gap-4 text-slate-400 text-xs border-t pt-3">
+                                    <button 
+                                        onClick={() => handleLike(post.id, post.likes)} 
+                                        className="flex items-center gap-1 hover:text-red-500 transition-colors"
+                                    >
+                                        <Heart className="w-4 h-4" /> {post.likes}
+                                    </button>
+                                </div>
+                                {/* ----------------------------------- */}
+                            </div>
+                        )})}
+                        {posts.length === 0 && <p className="text-center text-slate-400 text-sm mt-10">No posts yet.</p>}
+                    </div>
+                </div>
+            )}
 
             {view === ViewState.EXPLORE && (
                 <div className="px-6 pt-4">

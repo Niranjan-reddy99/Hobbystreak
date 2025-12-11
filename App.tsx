@@ -8,11 +8,9 @@ import {
   CheckCircle, Circle, Trash2, RefreshCw
 } from 'lucide-react';
 
-// --- CONFIGURATION ---
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-// Memory Storage (Bypasses Browser Blocks)
+// ==========================================
+// 1. MEMORY STORAGE ADAPTER
+// ==========================================
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -20,18 +18,26 @@ const memoryStorage = {
   removeItem: (key: string) => { delete memoryStorage.store[key]; }
 };
 
+// ==========================================
+// 2. CONFIGURATION
+// ==========================================
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
 const supabase = (supabaseUrl && supabaseKey) 
   ? createClient(supabaseUrl, supabaseKey, {
       auth: {
         storage: memoryStorage,
-        persistSession: false, 
+        persistSession: false,  
         autoRefreshToken: false,
         detectSessionInUrl: false
       }
     }) 
   : null;
 
-// --- TYPES ---
+// ==========================================
+// 3. TYPES
+// ==========================================
 enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS }
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
 
@@ -47,14 +53,15 @@ interface Hobby { id: string; name: string; description: string; category: Hobby
 interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: string[]; authorName: string; authorAvatar?: string; timestamp: string; }
 interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
 
-// --- CONSTANTS ---
+// ==========================================
+// 4. CONSTANTS & COMPONENTS
+// ==========================================
 const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
 const LEADERBOARD_USERS = [
     { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
     { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
 ];
 
-// --- COMPONENTS ---
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -86,25 +93,27 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
   );
 };
 
-// --- MAIN APP ---
+// ==========================================
+// 5. MAIN APP
+// ==========================================
 export default function App() {
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   
-  // Data
+  // Data State
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
 
-  // Inputs
+  // Inputs & Selections
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-
-  // UI
+  
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -118,8 +127,19 @@ export default function App() {
         await fetchHobbiesAndPosts();
         await fetchLeaderboard();
         
-        // Mock Tasks
-        setTasks(INITIAL_TASKS);
+        // Try to recover session
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                await loadUserProfile(session.user.id);
+                setView(ViewState.FEED);
+            }
+        } catch (e) { console.log("Session recovery failed", e); }
+        
+        const savedTasks = localStorage.getItem('hobbystreak_tasks');
+        if (savedTasks) setTasks(JSON.parse(savedTasks));
+        else setTasks(INITIAL_TASKS);
+
         setIsAppLoading(false);
     };
     initApp();
@@ -155,7 +175,7 @@ export default function App() {
           setPosts(postsData.map((p: any) => ({
               id: p.id, userId: p.user_id, hobbyId: p.hobby_id, content: p.content,
               likes: p.likes || 0, comments: [],
-              authorName: 'User', authorAvatar: '', // Simplified
+              authorName: 'User', authorAvatar: '',
               timestamp: new Date(p.created_at).toLocaleDateString()
           })));
       }
@@ -196,7 +216,13 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
+        // IMPORTANT: Manually load profile, NO RELOAD
         await loadUserProfile(data.session.user.id);
+        
+        // CLEAR FORM DATA ON SUCCESS
+        setEmail('');
+        setPassword('');
+        
         setView(ViewState.FEED);
         showToast("Welcome back!");
     }
@@ -214,33 +240,73 @@ export default function App() {
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
               stats: { points: 0, totalStreak: 0 }
           });
+          
           showToast("Account created! Log in.");
+          
+          // CLEAR FORM
+          setEmail('');
+          setPassword('');
+          setName('');
+          
           setView(ViewState.LOGIN);
       }
       setIsLoading(false);
   };
 
-  // --- ANONYMOUS POSTING FUNCTION ---
-  // THIS IS THE FIX: It does not check for currentUser. 
-  // It sends null if you aren't logged in.
+  const handleLogout = async () => {
+      if (supabase) await supabase.auth.signOut();
+      
+      setCurrentUser(null);
+      
+      // FIXED: CLEAR ALL INPUT STATES SO THEY DON'T PERSIST
+      setEmail('');
+      setPassword('');
+      setName('');
+      
+      setView(ViewState.LOGIN);
+  };
+
+  // --- GLOBAL POSTING FUNCTION ---
   const handleCreatePost = async (content: string) => {
-      if (!supabase) return showToast("DB Not Connected", "error");
+      if (!currentUser || !supabase) return showToast("Log in first!", "error");
       
       const { error } = await supabase.from('posts').insert({
-          user_id: currentUser?.id || null, // <--- THIS ALLOWS ANONYMOUS POSTING
-          hobby_id: null,
+          user_id: currentUser.id,
+          hobby_id: null, 
           content
       });
 
       if (!error) {
+          const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
+          await supabase.from('profiles').update({ stats: newStats }).eq('id', currentUser.id);
+          setCurrentUser({ ...currentUser, stats: newStats });
+          
           await fetchHobbiesAndPosts();
           setView(ViewState.FEED);
           triggerConfetti();
-          showToast("Posted Successfully!");
+          showToast("Posted! +20 XP");
       } else {
-          console.error("Post Error:", error);
           showToast("Error: " + error.message, 'error');
       }
+  };
+
+  const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {
+      setIsLoading(true);
+      if (!currentUser || !supabase) return;
+
+      const { data, error } = await supabase.from('hobbies').insert({
+          name: n, description: d, category: c, icon: '🌟', member_count: 1, 
+          image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f'
+      }).select().single();
+
+      if (data && !error) {
+          await fetchHobbiesAndPosts();
+          setView(ViewState.EXPLORE);
+          showToast("Created!");
+      } else {
+          showToast(error?.message || "Failed", 'error');
+      }
+      setIsLoading(false);
   };
 
   // --- RENDER ---
@@ -271,8 +337,6 @@ export default function App() {
                         <Button className="w-full" onClick={handleLogin} isLoading={isLoading}>Sign In</Button>
                     </div>
                     <button onClick={() => setView(ViewState.REGISTER)} className="mt-6 text-sm text-slate-400 w-full">Create Account</button>
-                    {/* EMERGENCY BYPASS BUTTON */}
-                    <button onClick={() => setView(ViewState.FEED)} className="mt-8 text-xs text-blue-500 w-full underline">Skip Login (Test App)</button>
                 </div>
             )}
 
@@ -334,7 +398,7 @@ export default function App() {
                  <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Testing)</p></div>
             )}
             {view === ViewState.PROFILE && (
-                 <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={async () => { await supabase?.auth.signOut(); setCurrentUser(null); setView(ViewState.LOGIN); }}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name || "Guest"}</h2></div>
+                 <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={handleLogout}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name || "Guest"}</h2></div>
             )}
             {view === ViewState.SCHEDULE && (
                  <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Testing)</p></div>

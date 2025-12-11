@@ -204,8 +204,11 @@ export default function App() {
         showToast(error.message, 'error');
     } else if (data.session) {
         await loadUserProfile(data.session.user.id);
+        
+        // CLEAR FORM DATA
         setEmail('');
         setPassword('');
+        
         setView(ViewState.FEED);
         showToast("Welcome back!");
     }
@@ -224,9 +227,12 @@ export default function App() {
               stats: { points: 0, totalStreak: 0 }
           });
           showToast("Account created! Log in.");
+          
+          // CLEAR FORM
           setEmail('');
           setPassword('');
           setName('');
+          
           setView(ViewState.LOGIN);
       }
       setIsLoading(false);
@@ -234,10 +240,14 @@ export default function App() {
 
   const handleLogout = async () => {
       if (supabase) await supabase.auth.signOut();
+      
       setCurrentUser(null);
+      
+      // CLEAR ALL INPUT STATES
       setEmail('');
       setPassword('');
       setName('');
+      
       setView(ViewState.LOGIN);
   };
 
@@ -273,7 +283,7 @@ export default function App() {
 
   const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {
       setIsLoading(true);
-      if (!supabase) return;
+      if (!currentUser || !supabase) return;
 
       const { data, error } = await supabase.from('hobbies').insert({
           name: n, description: d, category: c, icon: '🌟', member_count: 1, 
@@ -311,6 +321,7 @@ export default function App() {
                 <div className="h-full flex flex-col justify-center px-8">
                     <h1 className="text-3xl font-bold text-center mb-10">Hobbystreak</h1>
                     {!supabase && <div className="p-3 bg-red-100 text-red-700 text-xs mb-4 rounded">Supabase keys missing</div>}
+                    <div className="text-[10px] text-gray-400 text-center mb-4">Memory Auth Active</div>
                     <div className="space-y-4">
                         <input className="w-full p-4 bg-white rounded-2xl" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
                         <input className="w-full p-4 bg-white rounded-2xl" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
@@ -361,7 +372,7 @@ export default function App() {
                     
                     <div className="mt-4 mb-6">
                         <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                           📝 Posting to <b>General Feed</b>
+                           📝 Posting to <b>General Feed</b> (Global Post)
                         </p>
                     </div>
 
@@ -375,13 +386,13 @@ export default function App() {
 
             {/* Omitted other views for brevity but accessible via NAV */}
             {view === ViewState.EXPLORE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Testing)</p></div>
             )}
             {view === ViewState.PROFILE && (
                  <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={handleLogout}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name || "Guest"}</h2></div>
             )}
             {view === ViewState.SCHEDULE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Testing)</p></div>
             )}
             {view === ViewState.CREATE_HOBBY && (
                  <div className="px-6 pt-12 h-full bg-white"><div className="flex justify-between mb-6"><h1 className="text-xl font-bold">Create Community</h1><button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button></div><p className="text-sm text-gray-400">Disabled during test mode.</p></div>

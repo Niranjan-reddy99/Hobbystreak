@@ -14,7 +14,7 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Memory Storage to bypass browser blocks
+// Memory Storage (Keeps you logged in without browser errors)
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -55,10 +55,6 @@ interface Task { id: string; title: string; date: string; completed: boolean; ho
 // 3. CONSTANTS & COMPONENTS
 // ==========================================
 const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
-const LEADERBOARD_USERS = [
-    { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
-    { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
-];
 
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
@@ -102,7 +98,7 @@ export default function App() {
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
+  const [joinedHobbyIds, setJoinedHobbyIds] = useState<string[]>([]);
 
   // Inputs
   const [email, setEmail] = useState('');
@@ -111,6 +107,7 @@ export default function App() {
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedPostHobbyId, setSelectedPostHobbyId] = useState<string>('');
   
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -123,16 +120,6 @@ export default function App() {
         if (!supabase) return;
         
         await fetchHobbiesAndPosts();
-        await fetchLeaderboard();
-        
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                // Pass session user directly to ensure we have data even if DB fetch fails
-                await loadUserProfile(session.user);
-                setView(ViewState.FEED);
-            }
-        } catch (e) { console.log("Session check", e); }
         
         const savedTasks = localStorage.getItem('hobbystreak_tasks');
         if (savedTasks) setTasks(JSON.parse(savedTasks));
@@ -143,14 +130,12 @@ export default function App() {
     initApp();
   }, []);
 
-  // FIXED: Load Profile with Fallback
+  // --- HELPERS ---
   const loadUserProfile = async (user: any) => {
       if (!supabase) return;
       
-      // Try to get DB profile
-      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      
-      if (profile && !error) {
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (profile) {
           setCurrentUser({
               id: user.id,
               name: profile.name,
@@ -159,8 +144,7 @@ export default function App() {
               stats: profile.stats || { totalStreak: 0, points: 0 }
           });
       } else {
-          // FALLBACK: If DB profile missing, use Auth data so we are NOT null
-          console.warn("Profile missing in DB, using Auth data");
+          // Fallback if profile doesn't exist yet
           setCurrentUser({
               id: user.id,
               name: user.email?.split('@')[0] || 'User',
@@ -169,11 +153,19 @@ export default function App() {
               stats: { totalStreak: 0, points: 0 }
           });
       }
+
+      // Load joined hobbies
+      const { data: joined } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', user.id);
+      if (joined) {
+          const ids = joined.map((j: any) => j.hobby_id);
+          setJoinedHobbyIds(ids);
+      }
   };
 
   const fetchHobbiesAndPosts = async () => {
       if (!supabase) return;
       
+      // Hobbies
       const { data: hobbiesData } = await supabase.from('hobbies').select('*');
       if (hobbiesData) {
           setHobbies(hobbiesData.map((h: any) => ({
@@ -182,16 +174,17 @@ export default function App() {
           })));
       }
 
+      // Posts
       const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
       if (postsData) {
+          // Fetch Authors for posts
           const userIds = [...new Set(postsData.map((p:any) => p.user_id).filter(Boolean))];
           let authors: any[] = [];
-          
           if (userIds.length > 0) {
-            const { data } = await supabase.from('profiles').select('id, name, avatar').in('id', userIds);
-            authors = data || [];
+              const { data } = await supabase.from('profiles').select('id, name, avatar').in('id', userIds);
+              authors = data || [];
           }
-          
+
           setPosts(postsData.map((p: any) => {
               const author = authors.find((a: any) => a.id === p.user_id);
               return {
@@ -205,28 +198,9 @@ export default function App() {
       }
   };
 
-  const fetchLeaderboard = async () => {
-      if (!supabase) return;
-      const { data: profiles } = await supabase.from('profiles').select('*');
-      if (profiles) {
-          const sorted = profiles
-            .map((p: any) => ({
-                id: p.id, name: p.name, avatar: p.avatar, stats: p.stats || { points: 0, totalStreak: 0 }
-            }))
-            .sort((a: any, b: any) => b.stats.points - a.stats.points)
-            .slice(0, 5);
-          setLeaderboard(sorted as UserProfile[]);
-      }
-  };
-
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
-  };
-
-  const triggerConfetti = () => {
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 2000);
   };
 
   // --- ACTIONS ---
@@ -240,7 +214,7 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        // FIXED: Upsert profile to ensure it exists in DB
+        // Ensure profile exists
         await supabase.from('profiles').upsert({
             id: data.session.user.id,
             email: email,
@@ -249,9 +223,7 @@ export default function App() {
         });
 
         await loadUserProfile(data.session.user);
-        
-        setEmail('');
-        setPassword('');
+        setEmail(''); setPassword('');
         setView(ViewState.FEED);
         showToast("Welcome back!");
     }
@@ -264,7 +236,6 @@ export default function App() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) showToast(error.message, 'error');
       else if (data.user) {
-          // Create Profile
           await supabase.from('profiles').insert({
               id: data.user.id, name: name, email: email,
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
@@ -282,66 +253,79 @@ export default function App() {
       setIsLoading(false);
   };
 
-  const handleLogout = async () => {
-      if (supabase) await supabase.auth.signOut();
-      setCurrentUser(null);
-      setEmail('');
-      setPassword('');
-      setName('');
-      setView(ViewState.LOGIN);
-  };
-
-  const handleCreatePost = async (content: string) => {
-      if (!supabase) return showToast("DB Error", "error");
-      
-      // Ensure we have a user ID. If not, try to fetch session again.
-      let uid = currentUser?.id;
-      if (!uid) {
-          const { data } = await supabase.auth.getSession();
-          uid = data.session?.user.id;
-      }
-      
-      const { error } = await supabase.from('posts').insert({
-          user_id: uid || null, // Will use ID if found, otherwise null
-          hobby_id: null,
-          content
-      });
-
-      if (!error) {
-          if (uid && currentUser) {
-              const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
-              await supabase.from('profiles').update({ stats: newStats }).eq('id', uid);
-              setCurrentUser({ ...currentUser, stats: newStats });
-          }
-          await fetchHobbiesAndPosts();
-          setView(ViewState.FEED);
-          triggerConfetti();
-          showToast("Posted!");
-      } else {
-          showToast("Error: " + error.message, 'error');
-      }
-  };
-
   const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {
       setIsLoading(true);
       if (!currentUser || !supabase) return;
 
+      // 1. Create Hobby
       const { data, error } = await supabase.from('hobbies').insert({
           name: n, description: d, category: c, icon: '🌟', member_count: 1, 
           image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f'
       }).select().single();
 
       if (data && !error) {
-          await fetchHobbiesAndPosts();
+          // 2. Join it
+          await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
+          
+          // 3. UPDATE LOCAL STATE IMMEDIATELY (The fix!)
+          const newHobby: Hobby = {
+              id: data.id, name: n, description: d, category: c, memberCount: 1, icon: '🌟',
+              image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f'
+          };
+          
+          setHobbies(prev => [...prev, newHobby]); // Add to list
+          setJoinedHobbyIds(prev => [...prev, data.id]); // Add to joined
+          setSelectedPostHobbyId(data.id); // Select it for posting
+
           setView(ViewState.EXPLORE);
-          showToast("Created!");
+          showToast("Community Created!");
       } else {
           showToast(error?.message || "Failed", 'error');
       }
       setIsLoading(false);
   };
 
+  const handleCreatePost = async (content: string) => {
+      if (!supabase) return showToast("DB Error", "error");
+      
+      const uid = currentUser?.id || null;
+      // Use selected community OR null for global
+      const targetHobbyId = selectedPostHobbyId || null; 
+      
+      const { error } = await supabase.from('posts').insert({
+          user_id: uid,
+          hobby_id: targetHobbyId,
+          content
+      });
+
+      if (!error) {
+          await fetchHobbiesAndPosts();
+          setView(ViewState.FEED);
+          showToast("Posted!");
+      } else {
+          showToast("Error: " + error.message, 'error');
+      }
+  };
+
+  const handleJoinCommunity = async (e: React.MouseEvent, hobbyId: string) => {
+      e.stopPropagation();
+      if (!currentUser || !supabase) return showToast("Log in first");
+      if (joinedHobbyIds.includes(hobbyId)) return showToast("Already joined!");
+      
+      const { error } = await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
+      
+      if (!error) {
+          setJoinedHobbyIds(prev => [...prev, hobbyId]);
+          setSelectedPostHobbyId(hobbyId);
+          showToast("Joined!");
+      } else {
+          showToast("Error joining", 'error');
+      }
+  };
+
   // --- RENDER ---
+  const myCommunities = hobbies.filter(h => joinedHobbyIds.includes(h.id));
+
   if (isAppLoading) return <div className="min-h-screen bg-neutral-900 flex items-center justify-center"><Loader2 className="text-white animate-spin w-8 h-8"/></div>;
 
   return (
@@ -362,7 +346,6 @@ export default function App() {
                 <div className="h-full flex flex-col justify-center px-8">
                     <h1 className="text-3xl font-bold text-center mb-10">Hobbystreak</h1>
                     {!supabase && <div className="p-3 bg-red-100 text-red-700 text-xs mb-4 rounded">Supabase keys missing</div>}
-                    <div className="text-[10px] text-gray-400 text-center mb-4">Memory Auth Active</div>
                     <div className="space-y-4">
                         <input className="w-full p-4 bg-white rounded-2xl" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
                         <input className="w-full p-4 bg-white rounded-2xl" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
@@ -388,20 +371,63 @@ export default function App() {
             {view === ViewState.FEED && (
                 <div className="px-6 pt-4">
                     <div className="flex justify-between items-center mb-6"><h1 className="text-xl font-bold">Home</h1><Bell className="w-5 h-5" /></div>
-                    <div className="bg-slate-900 text-white p-4 rounded-3xl mb-6 flex justify-between shadow-lg">
-                        <div className="flex items-center gap-3"><Flame className="w-8 h-8 text-orange-400" /><div><p className="text-xs text-slate-400">Streak</p><p className="text-lg font-bold">{currentUser?.stats.totalStreak || 0}</p></div></div>
-                        <div className="h-10 w-[1px] bg-white/20"></div>
-                        <div className="flex items-center gap-3"><Trophy className="w-8 h-8 text-yellow-400" /><div><p className="text-xs text-slate-400">Points</p><p className="text-lg font-bold">{currentUser?.stats.points || 0}</p></div></div>
-                    </div>
                     <div className="space-y-4">
-                        {posts.map(post => (
+                        {posts.map(post => {
+                            const postHobby = hobbies.find(h => h.id === post.hobbyId);
+                            return (
                             <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
-                                <div className="flex items-center gap-3 mb-3"><img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" /><span className="text-sm font-bold">{post.authorName}</span></div>
+                                <div className="flex items-center gap-3 mb-3">
+                                    <img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" />
+                                    <div className="flex-1">
+                                        <span className="text-sm font-bold block">{post.authorName}</span>
+                                        {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}
+                                    </div>
+                                </div>
                                 <p className="text-sm mb-3">{post.content}</p>
                                 <div className="flex gap-4 text-slate-400 text-xs"><span className="flex items-center gap-1"><Heart className="w-4 h-4"/> {post.likes}</span></div>
                             </div>
-                        ))}
+                        )})}
                         {posts.length === 0 && <p className="text-center text-slate-400 text-sm mt-10">No posts yet.</p>}
+                    </div>
+                </div>
+            )}
+
+            {view === ViewState.EXPLORE && (
+                <div className="px-6 pt-4">
+                    <div className="flex justify-between items-center mb-4"><h1 className="text-xl font-bold">Explore</h1><button onClick={() => setView(ViewState.CREATE_HOBBY)}><Plus className="bg-slate-900 text-white p-2 rounded-full w-8 h-8" /></button></div>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 pb-2">
+                        {Object.values(HobbyCategory).map(cat => <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory === cat ? 'bg-slate-900 text-white' : 'bg-white border'}`}>{cat}</button>)}
+                    </div>
+                    <div className="space-y-3">
+                        {hobbies.filter(h => selectedCategory === HobbyCategory.ALL || h.category === selectedCategory).map(h => {
+                            const isJoined = joinedHobbyIds.includes(h.id);
+                            return (
+                                <div key={h.id} className="bg-white p-4 rounded-3xl flex items-center gap-4 shadow-sm" onClick={() => { setSelectedHobby(h); setView(ViewState.COMMUNITY_DETAILS); }}>
+                                    <div className="text-2xl bg-slate-50 w-12 h-12 rounded-xl flex items-center justify-center">{h.icon}</div>
+                                    <div className="flex-1"><h3 className="font-bold text-sm">{h.name}</h3><p className="text-xs text-slate-400">{h.memberCount} members</p></div>
+                                    <button onClick={(e) => handleJoinCommunity(e, h.id)} className={`px-4 py-2 rounded-xl text-xs font-bold ${isJoined ? 'bg-green-100 text-green-700' : 'bg-slate-100'}`}>{isJoined ? 'Joined' : 'Join'}</button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {view === ViewState.CREATE_HOBBY && (
+                <div className="px-6 pt-12 h-full bg-white">
+                    <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">Create Community</h1><button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button></div>
+                    <div className="space-y-4">
+                        <input id="h-name" className="w-full p-4 bg-slate-50 rounded-2xl" placeholder="Name" />
+                        <textarea id="h-desc" className="w-full p-4 h-24 bg-slate-50 rounded-2xl" placeholder="Description" />
+                        <select id="h-cat" className="w-full p-4 bg-slate-50 rounded-2xl">
+                            {Object.values(HobbyCategory).filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <Button className="w-full mt-4" onClick={() => {
+                            const n = (document.getElementById('h-name') as HTMLInputElement).value;
+                            const d = (document.getElementById('h-desc') as HTMLTextAreaElement).value;
+                            const c = (document.getElementById('h-cat') as HTMLSelectElement).value as HobbyCategory;
+                            if(n && d) handleCreateHobby(n, d, c);
+                        }} isLoading={isLoading}>Create</Button>
                     </div>
                 </div>
             )}
@@ -411,32 +437,44 @@ export default function App() {
                     <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">New Post</h1><button onClick={() => setView(ViewState.FEED)}><X className="w-6 h-6" /></button></div>
                     <textarea id="post-input" className="w-full h-32 bg-slate-50 p-4 rounded-2xl resize-none text-sm outline-none" placeholder="Share your progress..." />
                     
-                    <div className="mt-4 mb-6">
-                        <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                           📝 Posting to <b>General Feed</b> (Global Post)
-                        </p>
+                    <div className="mt-4">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Select Community</label>
+                        <div className="flex gap-2 overflow-x-auto pb-4 mt-2">
+                            {myCommunities.map(h => (
+                                <button 
+                                    key={h.id} 
+                                    onClick={() => setSelectedPostHobbyId(h.id)}
+                                    className={`px-4 py-2 rounded-xl text-xs border whitespace-nowrap transition-colors ${selectedPostHobbyId === h.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}
+                                >
+                                    {h.icon} {h.name}
+                                </button>
+                            ))}
+                            {myCommunities.length === 0 && <p className="text-xs text-slate-400 p-2 border border-dashed rounded w-full">Join a community or post globally.</p>}
+                        </div>
                     </div>
 
                     <Button className="w-full mt-8" onClick={() => {
                         const c = (document.getElementById('post-input') as HTMLTextAreaElement).value;
                         if(c) handleCreatePost(c);
-                        else showToast("Write something!", "error");
-                    }}>Post Now</Button>
+                    }}>Post</Button>
                 </div>
             )}
 
-            {/* Omitted other views for brevity but accessible via NAV */}
-            {view === ViewState.EXPLORE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Testing)</p></div>
-            )}
             {view === ViewState.PROFILE && (
-                 <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={handleLogout}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name || "Guest"}</h2></div>
+                 <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={async () => { await supabase?.auth.signOut(); setCurrentUser(null); setView(ViewState.LOGIN); }}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name || "Guest"}</h2>
+                 <h3 className="font-bold text-sm mb-4 mt-8">Joined Communities</h3>
+                 <div className="space-y-3">
+                     {myCommunities.map(h => (
+                         <div key={h.id} className="bg-white p-4 rounded-2xl flex gap-3 shadow-sm"><span className="text-2xl">{h.icon}</span><p className="font-bold text-sm my-auto">{h.name}</p></div>
+                     ))}
+                     {myCommunities.length === 0 && <p className="text-slate-400 text-sm">None yet.</p>}
+                 </div>
+                 </div>
             )}
+
+            {/* Other views omitted for brevity */}
             {view === ViewState.SCHEDULE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Testing)</p></div>
-            )}
-            {view === ViewState.CREATE_HOBBY && (
-                 <div className="px-6 pt-12 h-full bg-white"><div className="flex justify-between mb-6"><h1 className="text-xl font-bold">Create Community</h1><button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button></div><p className="text-sm text-gray-400">Disabled during test mode.</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks</p></div>
             )}
 
         </div>

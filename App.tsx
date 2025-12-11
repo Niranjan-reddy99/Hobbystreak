@@ -9,9 +9,9 @@ import {
 } from 'lucide-react';
 
 // ==========================================
-// 1. MEMORY STORAGE ADAPTER (THE FIX 🛠️)
+// 1. THE "MEMORY FIX" (Crucial Step)
 // ==========================================
-// This bypasses the "Access to storage is not allowed" error
+// We create a fake storage object so Supabase never touches the real one.
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -19,18 +19,15 @@ const memoryStorage = {
   removeItem: (key: string) => { delete memoryStorage.store[key]; }
 };
 
-// ==========================================
-// 2. CONFIGURATION
-// ==========================================
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Force Supabase to use our memory storage instead of the blocked localStorage
+// Initialize Supabase with MEMORY storage (Bypasses Browser Block)
 const supabase = (supabaseUrl && supabaseKey) 
   ? createClient(supabaseUrl, supabaseKey, {
       auth: {
-        storage: memoryStorage, // <--- THIS IS THE MAGIC FIX
-        persistSession: false,  // Don't try to save to disk
+        storage: memoryStorage, // <--- THIS IS WHY THE DIAGNOSTIC WORKED
+        persistSession: false,  
         autoRefreshToken: false,
         detectSessionInUrl: false
       }
@@ -38,7 +35,7 @@ const supabase = (supabaseUrl && supabaseKey)
   : null;
 
 // ==========================================
-// 3. TYPES
+// 2. TYPES & DATA
 // ==========================================
 enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS }
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
@@ -55,15 +52,15 @@ interface Hobby { id: string; name: string; description: string; category: Hobby
 interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: string[]; authorName: string; authorAvatar?: string; timestamp: string; }
 interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
 
-// ==========================================
-// 4. CONSTANTS & COMPONENTS
-// ==========================================
 const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
 const LEADERBOARD_USERS = [
     { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
     { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
 ];
 
+// ==========================================
+// 3. COMPONENTS
+// ==========================================
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -96,7 +93,7 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
 };
 
 // ==========================================
-// 5. MAIN APP
+// 4. MAIN APP
 // ==========================================
 export default function App() {
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
@@ -127,11 +124,13 @@ export default function App() {
     const initApp = async () => {
         if (!supabase) return;
         
+        // 1. Fetch Data
         await fetchHobbiesAndPosts();
         await fetchLeaderboard();
         
-        // Just mock tasks for now to avoid local storage bugs
+        // 2. Mock Tasks
         setTasks(INITIAL_TASKS);
+        
         setIsAppLoading(false);
     };
     initApp();
@@ -233,13 +232,14 @@ export default function App() {
       setIsLoading(false);
   };
 
-  // --- GLOBAL POSTING FUNCTION (No community needed) ---
+  // --- GLOBAL POSTING FUNCTION ---
+  // Just like the Diagnostic tool - uses active session from RAM
   const handleCreatePost = async (content: string) => {
       if (!currentUser || !supabase) return showToast("Log in first!", "error");
       
       const { error } = await supabase.from('posts').insert({
           user_id: currentUser.id,
-          hobby_id: null, // Allow global posting
+          hobby_id: null, // Global post allowed
           content
       });
 
@@ -255,6 +255,25 @@ export default function App() {
       } else {
           showToast("Error: " + error.message, 'error');
       }
+  };
+
+  const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {
+      setIsLoading(true);
+      if (!currentUser || !supabase) return;
+
+      const { data, error } = await supabase.from('hobbies').insert({
+          name: n, description: d, category: c, icon: '🌟', member_count: 1, 
+          image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f'
+      }).select().single();
+
+      if (data && !error) {
+          await fetchHobbiesAndPosts();
+          setView(ViewState.EXPLORE);
+          showToast("Created!");
+      } else {
+          showToast(error?.message || "Failed", 'error');
+      }
+      setIsLoading(false);
   };
 
   // --- RENDER ---
@@ -322,7 +341,6 @@ export default function App() {
                 </div>
             )}
 
-            {/* CREATE POST - SIMPLIFIED */}
             {view === ViewState.CREATE_POST && (
                 <div className="px-6 pt-12 h-full bg-white">
                     <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">New Post</h1><button onClick={() => setView(ViewState.FEED)}><X className="w-6 h-6" /></button></div>
@@ -330,7 +348,7 @@ export default function App() {
                     
                     <div className="mt-4 mb-6">
                         <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                           📝 Posting to <b>General Feed</b> (Testing Mode)
+                           📝 Posting to <b>General Feed</b> (Global Post)
                         </p>
                     </div>
 
@@ -344,13 +362,31 @@ export default function App() {
 
             {/* Omitted other views for brevity but accessible via NAV */}
             {view === ViewState.EXPLORE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Post Testing)</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Testing)</p></div>
             )}
             {view === ViewState.PROFILE && (
                  <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={async () => { await supabase?.auth.signOut(); setCurrentUser(null); setView(ViewState.LOGIN); }}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name}</h2></div>
             )}
             {view === ViewState.SCHEDULE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Post Testing)</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Testing)</p></div>
+            )}
+            {view === ViewState.CREATE_HOBBY && (
+                 <div className="px-6 pt-12 h-full bg-white">
+                    <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">Create Community</h1><button onClick={() => setView(ViewState.EXPLORE)}><X className="w-6 h-6" /></button></div>
+                    <div className="space-y-4">
+                        <input id="h-name" className="w-full p-4 bg-slate-50 rounded-2xl" placeholder="Name" />
+                        <textarea id="h-desc" className="w-full p-4 h-24 bg-slate-50 rounded-2xl" placeholder="Description" />
+                        <select id="h-cat" className="w-full p-4 bg-slate-50 rounded-2xl">
+                            {Object.values(HobbyCategory).filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <Button className="w-full mt-4" onClick={() => {
+                            const n = (document.getElementById('h-name') as HTMLInputElement).value;
+                            const d = (document.getElementById('h-desc') as HTMLTextAreaElement).value;
+                            const c = (document.getElementById('h-cat') as HTMLSelectElement).value as HobbyCategory;
+                            if(n && d) handleCreateHobby(n, d, c);
+                        }} isLoading={isLoading}>Create</Button>
+                    </div>
+                </div>
             )}
 
         </div>

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 // ==========================================
-// 1. CONFIGURATION
+// 1. CONFIGURATION (Memory Storage Fix)
 // ==========================================
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -39,17 +39,22 @@ enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, 
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
 
 interface UserProfile {
-  id: string; name: string; email: string; avatar: string;
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
   stats: { totalStreak: number; points: number; };
 }
 
 interface Hobby { id: string; name: string; description: string; category: HobbyCategory; memberCount: number; icon: string; image: string; }
 interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: any[]; authorName: string; authorAvatar?: string; timestamp: string; }
-interface Task { id: string; title: string; date: string; completed: boolean; } // Updated Task Type
+interface Task { id: string; title: string; date: string; completed: boolean; }
 
 // ==========================================
 // 3. COMPONENTS
 // ==========================================
+const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false }];
+
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -95,7 +100,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [joinedHobbyIds, setJoinedHobbyIds] = useState<string[]>([]);
 
-  // Inputs
+  // UI State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -123,6 +128,8 @@ export default function App() {
             }
         } catch (e) { console.log("Session check failed", e); }
         
+        // Load mock tasks initially
+        setTasks(INITIAL_TASKS);
         setIsAppLoading(false);
     };
     initApp();
@@ -143,6 +150,7 @@ export default function App() {
               stats: profile.stats || { totalStreak: 0, points: 0 }
           });
       } else {
+          // Fallback to prevent null error
           setCurrentUser({
               id: user.id,
               name: user.email?.split('@')[0],
@@ -158,15 +166,6 @@ export default function App() {
           setJoinedHobbyIds(ids);
           if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
       }
-      
-      // Load Tasks
-      fetchTasks(user.id);
-  };
-
-  const fetchTasks = async (userId: string) => {
-      if (!supabase) return;
-      const { data } = await supabase.from('tasks').select('*').eq('user_id', userId);
-      if (data) setTasks(data);
   };
 
   const fetchHobbiesAndPosts = async () => {
@@ -207,6 +206,11 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const triggerConfetti = () => {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 2000);
+  };
+
   // --- ACTIONS ---
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -218,7 +222,14 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        await supabase.from('profiles').upsert({ id: data.session.user.id, email, name: email.split('@')[0], stats: { points: 0, totalStreak: 0 } });
+        // Upsert Profile
+        await supabase.from('profiles').upsert({
+            id: data.session.user.id,
+            email: email,
+            name: email.split('@')[0],
+            stats: { points: 0, totalStreak: 0 }
+        });
+
         await loadUserProfile(data.session.user);
         setEmail(''); setPassword('');
         setView(ViewState.FEED);
@@ -233,8 +244,12 @@ export default function App() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) showToast(error.message, 'error');
       else if (data.user) {
-          await supabase.from('profiles').insert({ id: data.user.id, name, email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`, stats: { points: 0, totalStreak: 0 } });
-          if(data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
+          await supabase.from('profiles').insert({
+              id: data.user.id, name: name, email: email,
+              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
+              stats: { points: 0, totalStreak: 0 }
+          });
+          if (data.session) { await loadUserProfile(data.user); setView(ViewState.FEED); }
           else { showToast("Account created! Log in."); setView(ViewState.LOGIN); }
       }
       setIsLoading(false);
@@ -249,71 +264,88 @@ export default function App() {
   };
 
   const handleCreatePost = async (content: string) => {
-      const uid = currentUser?.id;
-      const { error } = await supabase!.from('posts').insert({ user_id: uid, hobby_id: selectedPostHobbyId || null, content });
+      if (!supabase) return showToast("DB Error", "error");
+      
+      const uid = currentUser?.id || null;
+      const targetHobbyId = selectedPostHobbyId || null; 
+
+      const { error } = await supabase.from('posts').insert({
+          user_id: uid,
+          hobby_id: targetHobbyId,
+          content
+      });
+
       if (!error) {
+          if (uid && currentUser) {
+              const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
+              await supabase.from('profiles').update({ stats: newStats }).eq('id', uid);
+              setCurrentUser({ ...currentUser, stats: newStats });
+          }
           await fetchHobbiesAndPosts();
           if (view !== ViewState.COMMUNITY_DETAILS) setView(ViewState.FEED);
+          triggerConfetti();
           showToast("Posted!");
+      } else {
+          showToast("Error: " + error.message, 'error');
       }
   };
 
   const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {
       setIsLoading(true);
-      const { data, error } = await supabase!.from('hobbies').insert({
+      if (!currentUser || !supabase) return;
+
+      const { data, error } = await supabase.from('hobbies').insert({
           name: n, description: d, category: c, icon: '🌟', member_count: 1, 
           image_url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f'
       }).select().single();
+
       if (data && !error) {
-          await supabase!.from('user_hobbies').insert({ user_id: currentUser!.id, hobby_id: data.id });
+          await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id });
           setJoinedHobbyIds(prev => [...prev, data.id]);
+          setSelectedPostHobbyId(data.id);
           await fetchHobbiesAndPosts();
           setView(ViewState.EXPLORE);
           showToast("Created!");
+      } else {
+          showToast(error?.message || "Failed", 'error');
       }
       setIsLoading(false);
   };
 
   const handleJoinCommunity = async (e: React.MouseEvent, hobbyId: string) => {
       e.stopPropagation();
-      if (!currentUser) return showToast("Log in first");
-      const { error } = await supabase!.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
+      if (!currentUser || !supabase) return showToast("Log in first");
+      
+      const { error } = await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
+      
       if (!error) {
           setJoinedHobbyIds(prev => [...prev, hobbyId]);
+          // Increment DB count
           const current = hobbies.find(h => h.id === hobbyId);
-          await supabase!.from('hobbies').update({ member_count: (current?.memberCount || 0) + 1 }).eq('id', hobbyId);
+          await supabase.from('hobbies').update({ member_count: (current?.memberCount || 0) + 1 }).eq('id', hobbyId);
           fetchHobbiesAndPosts();
           showToast("Joined!");
       } else if (error.code === '23505') {
-          setJoinedHobbyIds(prev => [...prev, hobbyId]); // Sync if already joined
+          setJoinedHobbyIds(prev => [...prev, hobbyId]);
           showToast("Synced!");
       }
   };
 
-  // --- SCHEDULE ACTIONS (NEW) ---
-
-  const handleAddTask = async (title: string) => {
-      if (!currentUser) return;
-      const { data, error } = await supabase!.from('tasks').insert({ 
-          user_id: currentUser.id, title, date: selectedDate, completed: false 
-      }).select().single();
-      
-      if (data && !error) {
-          setTasks(prev => [...prev, data]);
-          showToast("Event added");
-      } else {
-          showToast("Error adding task", 'error');
-      }
+  // --- SCHEDULE MOCKS ---
+  const handleAddTask = (title: string) => {
+      const updated = [...tasks, { id: `t${Date.now()}`, title, date: selectedDate, completed: false }];
+      setTasks(updated);
+      showToast("Task added");
   };
 
-  const handleToggleTask = async (task: Task) => {
-      const { error } = await supabase!.from('tasks').update({ completed: !task.completed }).eq('id', task.id);
-      if (!error) setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t));
+  const handleToggleTask = (id: string) => {
+      const updated = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+      setTasks(updated);
   };
 
-  const handleDeleteTask = async (id: string) => {
-      const { error } = await supabase!.from('tasks').delete().eq('id', id);
-      if (!error) setTasks(prev => prev.filter(t => t.id !== id));
+  const handleDeleteTask = (id: string) => {
+      const updated = tasks.filter(t => t.id !== id);
+      setTasks(updated);
   };
 
   // --- RENDER ---
@@ -453,14 +485,14 @@ export default function App() {
                          
                          {joinedHobbyIds.includes(selectedHobby.id) ? (
                             <Button className="w-full mb-8" onClick={() => {
-                                setSelectedPostHobbyId(selectedHobby.id);
-                                setView(ViewState.CREATE_POST);
+                                setSelectedPostHobbyId(selectedHobby.id); // Pre-select
+                                setView(ViewState.CREATE_POST); // Go to post screen
                             }}>Write a Post</Button>
                          ) : (
                             <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}>Join Community</Button>
                          )}
 
-                         <h3 className="font-bold text-sm mb-4">Latest Posts</h3>
+                         <h3 className="font-bold text-sm mb-4">Community Posts</h3>
                          <div className="space-y-4">
                              {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (
                                  <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -486,30 +518,21 @@ export default function App() {
                  </div>
             )}
 
-            {/* --- UPDATED SCHEDULE VIEW --- */}
             {view === ViewState.SCHEDULE && (
                 <div className="px-6 pt-4 h-full flex flex-col">
                     <h1 className="text-xl font-bold mb-6">Schedule</h1>
                     <div className="flex justify-between mb-6">{[0,1,2,3,4,5,6].map((i) => { const d = new Date(); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; return (<button key={i} onClick={() => setSelectedDate(dateStr)} className={`w-10 h-14 border rounded-xl flex flex-col items-center justify-center text-xs ${selectedDate === dateStr ? 'bg-slate-900 text-white' : 'bg-white'}`}><span className="font-bold">{d.getDate()}</span></button>)})}</div>
-                    
                     <div className="flex-1 overflow-y-auto space-y-2">
                         {tasks.filter(t => t.date === selectedDate).map(t => (
-                            <div key={t.id} className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm group">
-                                <button onClick={() => handleToggleTask(t)}>{t.completed ? <CheckCircle className="w-6 h-6 text-green-500"/> : <Circle className="w-6 h-6 text-slate-300"/>}</button>
-                                <span className={`flex-1 text-sm ${t.completed ? 'line-through text-slate-400' : ''}`}>{t.title}</span>
-                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
+                            <div key={t.id} className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm">
+                                <button onClick={() => handleToggleTask(t.id)}>{t.completed ? <CheckCircle className="w-6 h-6 text-green-500"/> : <Circle className="w-6 h-6 text-slate-300"/>}</button>
+                                <span className={t.completed ? 'line-through text-slate-400' : ''}>{t.title}</span>
+                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto"><Trash2 className="w-4 h-4 text-slate-300"/></button>
                             </div>
                         ))}
                         {tasks.filter(t => t.date === selectedDate).length === 0 && <p className="text-center text-slate-400 text-xs mt-10">No events.</p>}
                     </div>
-                    
-                    <div className="bg-white p-2 rounded-2xl shadow-lg border flex gap-2 mt-4 absolute bottom-24 left-6 right-6">
-                        <input id="new-task" className="flex-1 pl-4 outline-none text-sm" placeholder="Add event..." />
-                        <button onClick={() => { 
-                            const input = document.getElementById('new-task') as HTMLInputElement; 
-                            if(input.value) { handleAddTask(input.value); input.value = ''; } 
-                        }} className="bg-slate-900 text-white p-2 rounded-xl"><Plus className="w-5 h-5"/></button>
-                    </div>
+                    <div className="bg-white p-2 rounded-2xl shadow-lg border flex gap-2 mt-4 absolute bottom-24 left-6 right-6"><input id="new-task" className="flex-1 pl-4 outline-none text-sm" placeholder="Add event..." /><button onClick={() => { const val = (document.getElementById('new-task') as HTMLInputElement).value; if(val) handleAddTask(val); }} className="bg-slate-900 text-white p-2 rounded-xl"><Plus className="w-5 h-5"/></button></div>
                 </div>
             )}
 

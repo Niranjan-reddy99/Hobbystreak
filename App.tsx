@@ -84,35 +84,47 @@ export default function App() {
   // ⭐ FIX 2: FULL SESSION RESTORE + LISTENER
   // ------------------------------------------
   useEffect(() => {
-    const init = async () => {
+  const init = async () => {
+    try {
       await fetchHobbiesAndPosts();
 
-      // Restore session on app load
-      const { data: { session } } = await supabase.auth.getSession();
+      // ⭐ SAFE SESSION RESTORE
+      let session = null;
+      try {
+        const res = await supabase.auth.getSession();
+        session = res?.data?.session || null;
+      } catch (err) {
+        console.warn("Session read blocked:", err);
+      }
 
       if (session?.user) {
         await loadUserProfile(session.user.id);
         setView(ViewState.FEED);
       }
+    } catch (err) {
+      console.error("INIT ERROR:", err);
+    }
 
-      setIsAppLoading(false);
-    };
+    // ⭐ VERY IMPORTANT: ENSURES UI LOADS EVEN IF ERROR
+    setIsAppLoading(false);
+  };
 
-    init();
+  init();
 
-    // ⭐ Listen to login / logout and update currentUser
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        await loadUserProfile(session.user.id);
-        setView(ViewState.FEED);
-      } else {
-        setCurrentUser(null);
-        setView(ViewState.LOGIN);
-      }
-    });
+  // ⭐ AUTH LISTENER (required for in-memory mode)
+  const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (session?.user) {
+      await loadUserProfile(session.user.id);
+      setView(ViewState.FEED);
+    } else {
+      setCurrentUser(null);
+      setView(ViewState.LOGIN);
+    }
+  });
 
-    return () => listener.subscription.unsubscribe();
-  }, []);
+  return () => listener.subscription.unsubscribe();
+}, []);
+
 
   // ----------------------------
   // LOGIN

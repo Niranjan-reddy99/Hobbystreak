@@ -8,22 +8,38 @@ import {
   CheckCircle, Circle, Trash2, RefreshCw
 } from 'lucide-react';
 
-// --- CONFIGURATION ---
+// ==========================================
+// 1. MEMORY STORAGE ADAPTER (THE FIX 🛠️)
+// ==========================================
+// This bypasses the "Access to storage is not allowed" error
+const memoryStorage = {
+  store: {} as Record<string, string>,
+  getItem: (key: string) => memoryStorage.store[key] || null,
+  setItem: (key: string, value: string) => { memoryStorage.store[key] = value; },
+  removeItem: (key: string) => { delete memoryStorage.store[key]; }
+};
+
+// ==========================================
+// 2. CONFIGURATION
+// ==========================================
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// FAIL-SAFE CLIENT: persistSession: false prevents "Storage" errors
+// Force Supabase to use our memory storage instead of the blocked localStorage
 const supabase = (supabaseUrl && supabaseKey) 
   ? createClient(supabaseUrl, supabaseKey, {
       auth: {
-        persistSession: false, 
+        storage: memoryStorage, // <--- THIS IS THE MAGIC FIX
+        persistSession: false,  // Don't try to save to disk
         autoRefreshToken: false,
         detectSessionInUrl: false
       }
     }) 
   : null;
 
-// --- TYPES ---
+// ==========================================
+// 3. TYPES
+// ==========================================
 enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS }
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
 
@@ -39,14 +55,15 @@ interface Hobby { id: string; name: string; description: string; category: Hobby
 interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: string[]; authorName: string; authorAvatar?: string; timestamp: string; }
 interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
 
-// --- CONSTANTS ---
+// ==========================================
+// 4. CONSTANTS & COMPONENTS
+// ==========================================
 const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
 const LEADERBOARD_USERS = [
     { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
     { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
 ];
 
-// --- COMPONENTS ---
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -78,31 +95,34 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
   );
 };
 
-// --- MAIN APP ---
+// ==========================================
+// 5. MAIN APP
+// ==========================================
 export default function App() {
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   
-  // Data State
+  // Data
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
 
-  // Inputs & Selections
+  // Inputs
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  
+
+  // UI
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isAppLoading, setIsAppLoading] = useState(true);
 
-  // --- 1. INITIALIZATION ---
+  // --- INITIALIZATION ---
   useEffect(() => {
     const initApp = async () => {
         if (!supabase) return;
@@ -110,10 +130,8 @@ export default function App() {
         await fetchHobbiesAndPosts();
         await fetchLeaderboard();
         
-        const savedTasks = localStorage.getItem('hobbystreak_tasks');
-        if (savedTasks) setTasks(JSON.parse(savedTasks));
-        else setTasks(INITIAL_TASKS);
-
+        // Just mock tasks for now to avoid local storage bugs
+        setTasks(INITIAL_TASKS);
         setIsAppLoading(false);
     };
     initApp();
@@ -190,6 +208,7 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
+        // IMPORTANT: Manually load profile, NO RELOAD
         await loadUserProfile(data.session.user.id);
         setView(ViewState.FEED);
         showToast("Welcome back!");
@@ -214,7 +233,7 @@ export default function App() {
       setIsLoading(false);
   };
 
-  // --- POSTING FUNCTION (Simplified) ---
+  // --- GLOBAL POSTING FUNCTION (No community needed) ---
   const handleCreatePost = async (content: string) => {
       if (!currentUser || !supabase) return showToast("Log in first!", "error");
       
@@ -259,12 +278,7 @@ export default function App() {
                 <div className="h-full flex flex-col justify-center px-8">
                     <h1 className="text-3xl font-bold text-center mb-10">Hobbystreak</h1>
                     {!supabase && <div className="p-3 bg-red-100 text-red-700 text-xs mb-4 rounded">Supabase keys missing</div>}
-                    
-                    {/* DEBUG INFO: Helps us see if storage is blocked */}
-                    <div className="text-[10px] text-gray-400 text-center mb-4">
-                       Session Status: {currentUser ? "Active" : "None"}
-                    </div>
-
+                    <div className="text-[10px] text-gray-400 text-center mb-4">Memory Auth Active</div>
                     <div className="space-y-4">
                         <input className="w-full p-4 bg-white rounded-2xl" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
                         <input className="w-full p-4 bg-white rounded-2xl" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
@@ -298,7 +312,7 @@ export default function App() {
                     <div className="space-y-4">
                         {posts.map(post => (
                             <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
-                                <div className="flex items-center gap-3 mb-3"><img src={post.authorAvatar} className="w-8 h-8 rounded-full" /><span className="text-sm font-bold">{post.authorName}</span></div>
+                                <div className="flex items-center gap-3 mb-3"><img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" /><span className="text-sm font-bold">{post.authorName}</span></div>
                                 <p className="text-sm mb-3">{post.content}</p>
                                 <div className="flex gap-4 text-slate-400 text-xs"><span className="flex items-center gap-1"><Heart className="w-4 h-4"/> {post.likes}</span></div>
                             </div>
@@ -333,7 +347,7 @@ export default function App() {
                  <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Post Testing)</p></div>
             )}
             {view === ViewState.PROFILE && (
-                 <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={() => { setCurrentUser(null); setView(ViewState.LOGIN); }}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name}</h2></div>
+                 <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={async () => { await supabase?.auth.signOut(); setCurrentUser(null); setView(ViewState.LOGIN); }}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name}</h2></div>
             )}
             {view === ViewState.SCHEDULE && (
                  <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Post Testing)</p></div>

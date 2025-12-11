@@ -45,10 +45,12 @@ interface UserProfile {
 
 interface Hobby { id: string; name: string; description: string; category: HobbyCategory; memberCount: number; icon: string; image: string; }
 
-// UPDATED: Post now knows if *you* liked it
+interface Comment { id: string; userId: string; content: string; authorName: string; }
+
+// Updated Post type to include comments and 'isLiked'
 interface Post { 
   id: string; userId: string; hobbyId: string | null; content: string; 
-  likes: number; isLiked: boolean; comments: any[]; 
+  likes: number; isLiked: boolean; comments: Comment[]; 
   authorName: string; authorAvatar?: string; timestamp: string; 
 }
 
@@ -104,7 +106,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [joinedHobbyIds, setJoinedHobbyIds] = useState<string[]>([]);
 
-  // Inputs
+  // UI State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -112,6 +114,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [selectedPostHobbyId, setSelectedPostHobbyId] = useState<string>('');
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -123,16 +126,14 @@ export default function App() {
     const initApp = async () => {
         if (!supabase) return;
         
-        // Try session first so we know WHO is liking posts
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
                 await loadUserProfile(session.user);
-                // Fetch posts AFTER we know the user, to check "isLiked"
                 await fetchHobbiesAndPosts(session.user.id);
                 setView(ViewState.FEED);
             } else {
-                await fetchHobbiesAndPosts(null); // Guest mode
+                await fetchHobbiesAndPosts(null);
             }
         } catch (e) { console.log("Session check failed", e); }
         
@@ -145,26 +146,16 @@ export default function App() {
   // --- DATA LOADING ---
   const loadUserProfile = async (user: any) => {
       if (!supabase) return;
-      
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
       
-      if (profile) {
-          setCurrentUser({
-              id: user.id,
-              name: profile.name,
-              email: profile.email,
-              avatar: profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-              stats: profile.stats || { totalStreak: 0, points: 0 }
-          });
-      } else {
-          setCurrentUser({
-              id: user.id,
-              name: user.email?.split('@')[0],
-              email: user.email,
-              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-              stats: { totalStreak: 0, points: 0 }
-          });
-      }
+      const userDefaults = {
+          id: user.id,
+          name: profile?.name || user.email?.split('@')[0],
+          email: user.email || '',
+          avatar: profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+          stats: profile?.stats || { totalStreak: 0, points: 0 }
+      };
+      setCurrentUser(userDefaults);
 
       const { data: joined } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', user.id);
       if (joined) {
@@ -186,7 +177,7 @@ export default function App() {
           })));
       }
 
-      // Posts
+      // Posts & Comments
       const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
       if (postsData) {
           const userIds = [...new Set(postsData.map((p:any) => p.user_id).filter(Boolean))];
@@ -196,7 +187,10 @@ export default function App() {
               authors = data || [];
           }
 
-          // Fetch YOUR likes to mark posts as "Liked"
+          // Fetch ALL Comments (Simple MVP approach)
+          const { data: commentsData } = await supabase.from('comments').select('*');
+          
+          // Fetch My Likes
           let myLikedPostIds: string[] = [];
           if (currentUserId) {
               const { data: likes } = await supabase.from('post_likes').select('post_id').eq('user_id', currentUserId);
@@ -205,11 +199,22 @@ export default function App() {
 
           setPosts(postsData.map((p: any) => {
               const author = authors.find((a: any) => a.id === p.user_id);
+              const postComments = commentsData?.filter((c:any) => c.post_id === p.id) || [];
+              
+              // Map comments
+              const mappedComments = postComments.map((c: any) => {
+                  // If we had comment author data, we'd map it here. For now, simple name.
+                  return {
+                      id: c.id, userId: c.user_id, content: c.content,
+                      authorName: 'User' // In a full app, we would fetch comment authors too
+                  };
+              });
+
               return {
                   id: p.id, userId: p.user_id, hobbyId: p.hobby_id, content: p.content,
                   likes: p.likes || 0, 
-                  isLiked: myLikedPostIds.includes(p.id), // True if you liked it
-                  comments: [],
+                  isLiked: myLikedPostIds.includes(p.id),
+                  comments: mappedComments,
                   authorName: author?.name || 'Anonymous', 
                   authorAvatar: author?.avatar,
                   timestamp: new Date(p.created_at).toLocaleDateString()
@@ -233,7 +238,7 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    if (!supabase) { setIsLoading(false); return; }
+    if (!supabase) return;
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -241,9 +246,7 @@ export default function App() {
     } else if (data.session) {
         await supabase.from('profiles').upsert({ id: data.session.user.id, email: email, name: email.split('@')[0], stats: { points: 0, totalStreak: 0 } });
         await loadUserProfile(data.session.user);
-        // Refresh posts to check for likes
         await fetchHobbiesAndPosts(data.session.user.id);
-        
         setEmail(''); setPassword('');
         setView(ViewState.FEED);
         showToast("Welcome back!");
@@ -257,12 +260,8 @@ export default function App() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) showToast(error.message, 'error');
       else if (data.user) {
-          await supabase.from('profiles').insert({
-              id: data.user.id, name: name, email: email,
-              avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-              stats: { points: 0, totalStreak: 0 }
-          });
-          if (data.session) { 
+          await supabase.from('profiles').insert({ id: data.user.id, name, email, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`, stats: { points: 0, totalStreak: 0 } });
+          if(data.session) { 
               await loadUserProfile(data.user); 
               await fetchHobbiesAndPosts(data.user.id);
               setView(ViewState.FEED); 
@@ -300,20 +299,31 @@ export default function App() {
       }
   };
 
-  // --- SMART LIKE LOGIC ---
   const handleLike = async (post: Post) => {
       if (!supabase || !currentUser) return showToast("Login to like!");
 
       if (post.isLiked) {
-          // Unlike: Remove from tracking, Decrease Count
           setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: p.likes - 1, isLiked: false } : p));
           await supabase.from('post_likes').delete().match({ user_id: currentUser.id, post_id: post.id });
           await supabase.from('posts').update({ likes: Math.max(0, post.likes - 1) }).eq('id', post.id);
       } else {
-          // Like: Add to tracking, Increase Count
           setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: p.likes + 1, isLiked: true } : p));
           await supabase.from('post_likes').insert({ user_id: currentUser.id, post_id: post.id });
           await supabase.from('posts').update({ likes: post.likes + 1 }).eq('id', post.id);
+      }
+  };
+
+  const handleComment = async (postId: string, content: string) => {
+      if (!currentUser) return showToast("Login to comment");
+      if (!content.trim()) return;
+
+      const newComment = { id: `temp-${Date.now()}`, userId: currentUser.id, content, authorName: currentUser.name };
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, comments: [...p.comments, newComment] } : p));
+
+      const { error } = await supabase.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
+      if (error) {
+          showToast("Failed to comment", "error");
+          fetchHobbiesAndPosts(currentUser.id); // Revert on error
       }
   };
 
@@ -417,15 +427,57 @@ export default function App() {
                                 </div>
                                 <p className="text-sm mb-3">{post.content}</p>
                                 
-                                <div className="flex gap-4 text-slate-400 text-xs border-t pt-3">
+                                <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
                                     <button 
                                         onClick={() => handleLike(post)} 
                                         className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
                                     >
                                         <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}/> {post.likes}
                                     </button>
-                                    <span className="flex items-center gap-1"><MessageCircle className="w-4 h-4"/> {post.comments.length}</span>
+                                    <button 
+                                        onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} 
+                                        className="flex items-center gap-1 hover:text-blue-500 transition-colors"
+                                    >
+                                        <MessageCircle className="w-4 h-4"/> {post.comments.length}
+                                    </button>
                                 </div>
+
+                                {/* Comments Section */}
+                                {expandedPostId === post.id && (
+                                    <div className="mt-4 pt-4 border-t border-slate-50 animate-in slide-in-from-top-2">
+                                        <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
+                                            {post.comments.map(c => (
+                                                <div key={c.id} className="text-xs bg-slate-50 p-2 rounded">
+                                                    <span className="font-bold text-slate-700">{c.authorName}:</span> {c.content}
+                                                </div>
+                                            ))}
+                                            {post.comments.length === 0 && <p className="text-xs text-slate-300">No comments yet.</p>}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                id={`comment-${post.id}`} 
+                                                className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none focus:ring-1 ring-slate-200" 
+                                                placeholder="Write a reply..." 
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        const target = e.target as HTMLInputElement;
+                                                        handleComment(post.id, target.value);
+                                                        target.value = '';
+                                                    }
+                                                }}
+                                            />
+                                            <button 
+                                                onClick={() => {
+                                                    const input = document.getElementById(`comment-${post.id}`) as HTMLInputElement;
+                                                    if (input.value) { handleComment(post.id, input.value); input.value = ''; }
+                                                }}
+                                                className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700"
+                                            >
+                                                <Send className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )})}
                         {posts.length === 0 && <p className="text-center text-slate-400 text-sm mt-10">No posts yet.</p>}
@@ -510,24 +562,54 @@ export default function App() {
                             <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}>Join Community</Button>
                          )}
 
-                         <h3 className="font-bold text-sm mb-4">Latest Posts</h3>
+                         <h3 className="font-bold text-sm mb-4">Community Posts</h3>
                          <div className="space-y-4">
                              {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (
                                  <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                      <div className="flex items-center gap-2 mb-2"><img src={post.authorAvatar} className="w-6 h-6 rounded-full" /><span className="text-xs font-bold">{post.authorName}</span></div>
                                      <p className="text-sm text-slate-700">{post.content}</p>
-                                     
                                      <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
-                                        <button 
+                                         <button 
                                             onClick={() => handleLike(post)} 
                                             className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
-                                        >
+                                         >
                                             <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}/> {post.likes}
-                                        </button>
+                                         </button>
+                                         <button onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} className="flex items-center gap-1 hover:text-blue-500"><MessageCircle className="w-4 h-4"/> {post.comments.length}</button>
                                      </div>
+                                     
+                                     {/* Nested Comments in Community View */}
+                                     {expandedPostId === post.id && (
+                                        <div className="mt-4 pt-4 border-t border-slate-50 animate-in slide-in-from-top-2">
+                                            <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
+                                                {post.comments.map(c => (
+                                                    <div key={c.id} className="text-xs bg-slate-50 p-2 rounded"><span className="font-bold">{c.authorName}:</span> {c.content}</div>
+                                                ))}
+                                                {post.comments.length === 0 && <p className="text-xs text-slate-300">No comments yet.</p>}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    id={`comm-comm-${post.id}`} 
+                                                    className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none focus:ring-1 ring-slate-200" 
+                                                    placeholder="Write a reply..." 
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const target = e.target as HTMLInputElement;
+                                                            handleComment(post.id, target.value);
+                                                            target.value = '';
+                                                        }
+                                                    }}
+                                                />
+                                                <button onClick={() => {
+                                                    const input = document.getElementById(`comm-comm-${post.id}`) as HTMLInputElement;
+                                                    if (input.value) { handleComment(post.id, input.value); input.value = ''; }
+                                                }} className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700"><Send className="w-3 h-3" /></button>
+                                            </div>
+                                        </div>
+                                    )}
                                  </div>
                              ))}
-                             {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">Be the first to post!</p>}
+                             {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">No posts yet. Be the first!</p>}
                          </div>
                      </div>
                 </div>
@@ -546,7 +628,7 @@ export default function App() {
             )}
 
             {view === ViewState.SCHEDULE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Coming Soon)</p></div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Mocked)</p></div>
             )}
 
         </div>

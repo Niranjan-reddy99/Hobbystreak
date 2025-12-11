@@ -261,6 +261,27 @@ export default function App() {
           showToast("Error: " + error.message, 'error');
       }
   };
+  // --- PASTE THIS NEW FUNCTION ---
+  const handleLike = async (postId: string, currentLikes: number) => {
+      if (!supabase) return;
+      
+      // 1. Optimistic Update (Updates the number on screen immediately)
+      setPosts(prev => prev.map(p => 
+          p.id === postId ? { ...p, likes: currentLikes + 1 } : p
+      ));
+
+      // 2. Update Database in background
+      const { error } = await supabase
+        .from('posts')
+        .update({ likes: currentLikes + 1 })
+        .eq('id', postId);
+
+      if (error) {
+          console.error("Like failed:", error);
+          showToast("Failed to update like", "error");
+      }
+  };
+  // -----------------------------
 
   // --- FIXED: Create Hobby now sets member_count to 1 in DB ---
   const handleCreateHobby = async (n: string, d: string, c: HobbyCategory) => {

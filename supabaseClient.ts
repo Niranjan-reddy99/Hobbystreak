@@ -12,8 +12,17 @@ export const isKeyFormatCorrect = () => {
   return supabaseUrl.startsWith("https://") && supabaseAnonKey.length > 20;
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// IMPORTANT FIX ⚠️
+// Force Supabase to use localStorage so session is not blocked by browser
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: window.localStorage,
+    persistSession: true,
+    autoRefreshToken: true,
+  }
+});
 
+// Your mapping helper stays same
 export const mapSupabaseUserToAppUser = (sbUser: any, profile: any) => ({
   id: sbUser.id,
   email: sbUser.email,
@@ -24,6 +33,6 @@ export const mapSupabaseUserToAppUser = (sbUser: any, profile: any) => ({
   hobbyStreaks: {},
   stats: {
     streak: 0,
-    totalPoints: 0
-  }
+    totalPoints: 0,
+  },
 });

@@ -14,7 +14,7 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Memory Storage (Bypasses Browser Blocks)
+// MEMORY STORAGE (Bypasses Browser Blocks)
 const memoryStorage = {
   store: {} as Record<string, string>,
   getItem: (key: string) => memoryStorage.store[key] || null,
@@ -48,21 +48,13 @@ interface UserProfile {
 }
 
 interface Hobby { id: string; name: string; description: string; category: HobbyCategory; memberCount: number; icon: string; image: string; }
-
-interface Comment { id: string; userId: string; content: string; authorName: string; }
-
-interface Post { 
-  id: string; userId: string; hobbyId: string | null; content: string; 
-  likes: number; comments: Comment[]; 
-  authorName: string; authorAvatar?: string; timestamp: string; 
-}
-
-interface Task { id: string; title: string; date: string; completed: boolean; }
+interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: string[]; authorName: string; authorAvatar?: string; timestamp: string; }
+interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
 
 // ==========================================
 // 3. CONSTANTS & COMPONENTS
 // ==========================================
-const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false }];
+const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
 
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
@@ -109,7 +101,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [joinedHobbyIds, setJoinedHobbyIds] = useState<string[]>([]);
 
-  // UI State
+  // Inputs
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -117,7 +109,6 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [selectedPostHobbyId, setSelectedPostHobbyId] = useState<string>('');
-  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -130,14 +121,10 @@ export default function App() {
         if (!supabase) return;
         await fetchHobbiesAndPosts();
         
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                await loadUserProfile(session.user);
-                setView(ViewState.FEED);
-            }
-        } catch (e) { console.log("Session check failed", e); }
-        
+        const savedTasks = localStorage.getItem('hobbystreak_tasks');
+        if (savedTasks) setTasks(JSON.parse(savedTasks));
+        else setTasks(INITIAL_TASKS);
+
         setIsAppLoading(false);
     };
     initApp();
@@ -148,9 +135,9 @@ export default function App() {
       if (!supabase) return;
       
       // FIX: Use maybeSingle() to avoid 406 error if profile is missing
-      const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
       
-      if (profile && !error) {
+      if (profile) {
           setCurrentUser({
               id: user.id,
               name: profile.name,
@@ -176,16 +163,6 @@ export default function App() {
           setJoinedHobbyIds(ids);
           if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
       }
-
-      // Load Tasks
-      const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', user.id);
-      if (tasksData) setTasks(tasksData);
-  };
-
-  const fetchTasks = async (userId: string) => {
-      if (!supabase) return;
-      const { data } = await supabase.from('tasks').select('*').eq('user_id', userId);
-      if (data) setTasks(data);
   };
 
   const fetchHobbiesAndPosts = async () => {
@@ -208,20 +185,11 @@ export default function App() {
               authors = data || [];
           }
 
-          const { data: commentsData } = await supabase.from('comments').select('*');
-
           setPosts(postsData.map((p: any) => {
               const author = authors.find((a: any) => a.id === p.user_id);
-              const postComments = commentsData?.filter((c:any) => c.post_id === p.id) || [];
-              
-              const mappedComments = postComments.map((c: any) => ({
-                  id: c.id, userId: c.user_id, content: c.content,
-                  authorName: authors.find(a => a.id === c.user_id)?.name || 'User'
-              }));
-
               return {
                   id: p.id, userId: p.user_id, hobbyId: p.hobby_id, content: p.content,
-                  likes: p.likes || 0, comments: mappedComments,
+                  likes: p.likes || 0, comments: [],
                   authorName: author?.name || 'Anonymous', 
                   authorAvatar: author?.avatar,
                   timestamp: new Date(p.created_at).toLocaleDateString()
@@ -245,7 +213,7 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    if (!supabase) return;
+    if (!supabase) { setIsLoading(false); return; }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -292,35 +260,30 @@ export default function App() {
       setView(ViewState.LOGIN);
   };
 
-  // --- COMMUNITY ACTIONS ---
+  const handleCreatePost = async (content: string) => {
+      if (!supabase) return showToast("DB Error", "error");
+      
+      const uid = currentUser?.id || null;
+      const targetHobbyId = selectedPostHobbyId || null; 
 
-  const handleJoinCommunity = async (e: React.MouseEvent, hobbyId: string) => {
-      e.stopPropagation();
-      if (!currentUser) return showToast("Log in first");
-      const { error } = await supabase!.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
-      if (!error) {
-          setJoinedHobbyIds(prev => [...prev, hobbyId]);
-          const current = hobbies.find(h => h.id === hobbyId);
-          await supabase!.from('hobbies').update({ member_count: (current?.memberCount || 0) + 1 }).eq('id', hobbyId);
-          fetchHobbiesAndPosts();
-          showToast("Joined!");
-      }
-  };
-
-  const handleLeaveCommunity = async () => {
-      if (!currentUser || !selectedHobby) return;
-      const { error } = await supabase!
-          .from('user_hobbies')
-          .delete()
-          .match({ user_id: currentUser.id, hobby_id: selectedHobby.id });
+      const { error } = await supabase.from('posts').insert({
+          user_id: uid,
+          hobby_id: targetHobbyId,
+          content
+      });
 
       if (!error) {
-          setJoinedHobbyIds(prev => prev.filter(id => id !== selectedHobby.id));
-          await supabase!.from('hobbies').update({ member_count: Math.max(0, selectedHobby.memberCount - 1) }).eq('id', selectedHobby.id);
-          fetchHobbiesAndPosts();
-          if (selectedPostHobbyId === selectedHobby.id) setSelectedPostHobbyId('');
-          setView(ViewState.EXPLORE);
-          showToast("Left community");
+          if (uid && currentUser) {
+              const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
+              await supabase.from('profiles').update({ stats: newStats }).eq('id', uid);
+              setCurrentUser({ ...currentUser, stats: newStats });
+          }
+          await fetchHobbiesAndPosts();
+          if (view !== ViewState.COMMUNITY_DETAILS) setView(ViewState.FEED);
+          triggerConfetti();
+          showToast("Posted!");
+      } else {
+          showToast("Error: " + error.message, 'error');
       }
   };
 
@@ -346,58 +309,55 @@ export default function App() {
       setIsLoading(false);
   };
 
-  // --- POST ACTIONS ---
-
-  const handleCreatePost = async (content: string) => {
-      const uid = currentUser?.id;
-      const { error } = await supabase!.from('posts').insert({ user_id: uid, hobby_id: selectedPostHobbyId || null, content });
+  const handleJoinCommunity = async (e: React.MouseEvent, hobbyId: string) => {
+      e.stopPropagation();
+      if (!currentUser || !supabase) return showToast("Log in first");
+      
+      const { error } = await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: hobbyId });
+      
       if (!error) {
-          await fetchHobbiesAndPosts();
-          if (view !== ViewState.COMMUNITY_DETAILS) setView(ViewState.FEED);
-          triggerConfetti();
-          showToast("Posted!");
+          setJoinedHobbyIds(prev => [...prev, hobbyId]);
+          
+          // Increment DB count
+          const current = hobbies.find(h => h.id === hobbyId);
+          await supabase.from('hobbies').update({ member_count: (current?.memberCount || 0) + 1 }).eq('id', hobbyId);
+          
+          fetchHobbiesAndPosts();
+          showToast("Joined!");
+      } else {
+          // If duplicate join error (can happen due to race conditions), just sync state
+          if(error.code === '23505') {
+             setJoinedHobbyIds(prev => [...prev, hobbyId]);
+             showToast("Synced!");
+          } else {
+             showToast("Error joining", 'error');
+          }
       }
   };
 
-  const handleLike = async (post: Post) => {
-      if (!supabase) return;
-      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: p.likes + 1 } : p));
-      await supabase.from('posts').update({ likes: post.likes + 1 }).eq('id', post.id);
+  // --- SCHEDULE MOCKS (Restoring old functionality) ---
+  const handleAddTask = (title: string) => {
+      const updated = [...tasks, { id: `t${Date.now()}`, title, date: selectedDate, completed: false }];
+      setTasks(updated);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
+      showToast("Task added");
   };
 
-  const handleComment = async (postId: string, content: string) => {
-      if (!currentUser || !content) return;
-      const { error } = await supabase!.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
-      if (!error) {
-          await fetchHobbiesAndPosts(); // Refresh to see comment
-      }
+  const handleToggleTask = (task: Task) => {
+      const updated = tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t);
+      setTasks(updated);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
   };
 
-  // --- SCHEDULE ACTIONS ---
-
-  const handleAddTask = async (title: string) => {
-      if (!currentUser) return;
-      const { data, error } = await supabase!.from('tasks').insert({ 
-          user_id: currentUser.id, title, date: selectedDate, completed: false 
-      }).select().single();
-      if (data && !error) {
-          setTasks(prev => [...prev, data]);
-          showToast("Event added");
-      }
-  };
-
-  const handleToggleTask = async (task: Task) => {
-      const { error } = await supabase!.from('tasks').update({ completed: !task.completed }).eq('id', task.id);
-      if (!error) setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t));
-  };
-
-  const handleDeleteTask = async (id: string) => {
-      const { error } = await supabase!.from('tasks').delete().eq('id', id);
-      if (!error) setTasks(prev => prev.filter(t => t.id !== id));
+  const handleDeleteTask = (id: string) => {
+      const updated = tasks.filter(t => t.id !== id);
+      setTasks(updated);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
   };
 
   // --- RENDER ---
   const myCommunities = hobbies.filter(h => joinedHobbyIds.includes(h.id));
+
   if (isAppLoading) return <div className="min-h-screen bg-neutral-900 flex items-center justify-center"><Loader2 className="text-white animate-spin w-8 h-8"/></div>;
 
   return (
@@ -455,31 +415,7 @@ export default function App() {
                                     </div>
                                 </div>
                                 <p className="text-sm mb-3">{post.content}</p>
-                                
-                                {/* Likes & Comments */}
-                                <div className="flex gap-4 text-slate-400 text-xs border-t pt-3">
-                                    <button onClick={() => handleLike(post)} className="flex items-center gap-1 hover:text-red-500"><Heart className="w-4 h-4"/> {post.likes}</button>
-                                    <button onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} className="flex items-center gap-1 hover:text-blue-500"><MessageCircle className="w-4 h-4"/> {post.comments.length}</button>
-                                </div>
-
-                                {/* Comment Section */}
-                                {expandedPostId === post.id && (
-                                    <div className="mt-4 pt-4 border-t border-slate-50 animate-in slide-in-from-top-2">
-                                        <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                                            {post.comments.map(c => (
-                                                <div key={c.id} className="text-xs bg-slate-50 p-2 rounded"><span className="font-bold">{c.authorName}:</span> {c.content}</div>
-                                            ))}
-                                            {post.comments.length === 0 && <p className="text-xs text-slate-300">No comments yet</p>}
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <input id={`comment-${post.id}`} className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none" placeholder="Reply..." />
-                                            <button onClick={() => {
-                                                const input = document.getElementById(`comment-${post.id}`) as HTMLInputElement;
-                                                if (input.value) { handleComment(post.id, input.value); input.value = ''; }
-                                            }}><Send className="w-4 h-4 text-blue-500" /></button>
-                                        </div>
-                                    </div>
-                                )}
+                                <div className="flex gap-4 text-slate-400 text-xs"><span className="flex items-center gap-1"><Heart className="w-4 h-4"/> {post.likes}</span></div>
                             </div>
                         )})}
                         {posts.length === 0 && <p className="text-center text-slate-400 text-sm mt-10">No posts yet.</p>}
@@ -556,10 +492,10 @@ export default function App() {
                          <p className="text-sm text-slate-600 mb-6">{selectedHobby.description}</p>
                          
                          {joinedHobbyIds.includes(selectedHobby.id) ? (
-                             <div className="flex gap-2 mb-8">
-                                <Button className="flex-1" onClick={() => { setSelectedPostHobbyId(selectedHobby.id); setView(ViewState.CREATE_POST); }}>Write a Post</Button>
-                                <button onClick={handleLeaveCommunity} className="px-4 bg-red-50 text-red-500 rounded-2xl border border-red-100 text-xs font-bold">Leave</button>
-                             </div>
+                            <Button className="w-full mb-8" onClick={() => {
+                                setSelectedPostHobbyId(selectedHobby.id); // Pre-select
+                                setView(ViewState.CREATE_POST); // Go to post screen
+                            }}>Write a Post</Button>
                          ) : (
                             <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}>Join Community</Button>
                          )}
@@ -570,27 +506,6 @@ export default function App() {
                                  <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                      <div className="flex items-center gap-2 mb-2"><img src={post.authorAvatar} className="w-6 h-6 rounded-full" /><span className="text-xs font-bold">{post.authorName}</span></div>
                                      <p className="text-sm text-slate-700">{post.content}</p>
-                                     <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
-                                         <button onClick={() => handleLike(post)} className="flex items-center gap-1 hover:text-red-500"><Heart className="w-4 h-4"/> {post.likes}</button>
-                                         <button onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} className="flex items-center gap-1 hover:text-blue-500"><MessageCircle className="w-4 h-4"/> {post.comments.length}</button>
-                                     </div>
-                                     {/* Nested Comments in Community View */}
-                                     {expandedPostId === post.id && (
-                                        <div className="mt-4 pt-4 border-t border-slate-50 animate-in slide-in-from-top-2">
-                                            <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                                                {post.comments.map(c => (
-                                                    <div key={c.id} className="text-xs bg-slate-50 p-2 rounded"><span className="font-bold">{c.authorName}:</span> {c.content}</div>
-                                                ))}
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <input id={`comm-comm-${post.id}`} className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none" placeholder="Reply..." />
-                                                <button onClick={() => {
-                                                    const input = document.getElementById(`comm-comm-${post.id}`) as HTMLInputElement;
-                                                    if (input.value) { handleComment(post.id, input.value); input.value = ''; }
-                                                }}><Send className="w-4 h-4 text-blue-500" /></button>
-                                            </div>
-                                        </div>
-                                    )}
                                  </div>
                              ))}
                              {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">Be the first to post!</p>}

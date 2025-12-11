@@ -47,7 +47,6 @@ interface Hobby { id: string; name: string; description: string; category: Hobby
 
 interface Comment { id: string; userId: string; content: string; authorName: string; }
 
-// Updated Post type to include comments and 'isLiked'
 interface Post { 
   id: string; userId: string; hobbyId: string | null; content: string; 
   likes: number; isLiked: boolean; comments: Comment[]; 
@@ -125,6 +124,7 @@ export default function App() {
   useEffect(() => {
     const initApp = async () => {
         if (!supabase) return;
+        await fetchHobbiesAndPosts();
         
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -137,7 +137,11 @@ export default function App() {
             }
         } catch (e) { console.log("Session check failed", e); }
         
-        setTasks(INITIAL_TASKS);
+        // Load tasks from Local Storage to prevent DB errors for now
+        const savedTasks = localStorage.getItem('hobbystreak_tasks');
+        if (savedTasks) setTasks(JSON.parse(savedTasks));
+        else setTasks(INITIAL_TASKS);
+
         setIsAppLoading(false);
     };
     initApp();
@@ -168,7 +172,6 @@ export default function App() {
   const fetchHobbiesAndPosts = async (currentUserId: string | null) => {
       if (!supabase) return;
       
-      // Hobbies
       const { data: hobbiesData } = await supabase.from('hobbies').select('*');
       if (hobbiesData) {
           setHobbies(hobbiesData.map((h: any) => ({
@@ -177,7 +180,6 @@ export default function App() {
           })));
       }
 
-      // Posts & Comments
       const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
       if (postsData) {
           const userIds = [...new Set(postsData.map((p:any) => p.user_id).filter(Boolean))];
@@ -187,10 +189,8 @@ export default function App() {
               authors = data || [];
           }
 
-          // Fetch ALL Comments (Simple MVP approach)
           const { data: commentsData } = await supabase.from('comments').select('*');
           
-          // Fetch My Likes
           let myLikedPostIds: string[] = [];
           if (currentUserId) {
               const { data: likes } = await supabase.from('post_likes').select('post_id').eq('user_id', currentUserId);
@@ -201,14 +201,10 @@ export default function App() {
               const author = authors.find((a: any) => a.id === p.user_id);
               const postComments = commentsData?.filter((c:any) => c.post_id === p.id) || [];
               
-              // Map comments
-              const mappedComments = postComments.map((c: any) => {
-                  // If we had comment author data, we'd map it here. For now, simple name.
-                  return {
-                      id: c.id, userId: c.user_id, content: c.content,
-                      authorName: 'User' // In a full app, we would fetch comment authors too
-                  };
-              });
+              const mappedComments = postComments.map((c: any) => ({
+                  id: c.id, userId: c.user_id, content: c.content,
+                  authorName: 'User'
+              }));
 
               return {
                   id: p.id, userId: p.user_id, hobbyId: p.hobby_id, content: p.content,
@@ -238,7 +234,7 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    if (!supabase) return;
+    if (!supabase) { setIsLoading(false); return; }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -323,7 +319,7 @@ export default function App() {
       const { error } = await supabase.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
       if (error) {
           showToast("Failed to comment", "error");
-          fetchHobbiesAndPosts(currentUser.id); // Revert on error
+          fetchHobbiesAndPosts(currentUser.id);
       }
   };
 
@@ -365,6 +361,44 @@ export default function App() {
           setJoinedHobbyIds(prev => [...prev, hobbyId]);
           showToast("Synced!");
       }
+  };
+
+  // --- SCHEDULE LOGIC (UPDATED: Confetti + Add Task) ---
+  const handleAddTask = (title: string) => {
+      const updated = [...tasks, { id: `t${Date.now()}`, title, date: selectedDate, completed: false }];
+      setTasks(updated);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
+      showToast("Task added");
+  };
+
+  const handleToggleTask = (id: string) => {
+      const updated = tasks.map(t => {
+          if (t.id === id) {
+              if (!t.completed) triggerConfetti(); // 🎉 Confetti when completing!
+              return { ...t, completed: !t.completed };
+          }
+          return t;
+      });
+      setTasks(updated);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
+  };
+
+  const handleDeleteTask = (id: string) => {
+      const updated = tasks.filter(t => t.id !== id);
+      setTasks(updated);
+      localStorage.setItem('hobbystreak_tasks', JSON.stringify(updated));
+  };
+
+  const getWeekDays = () => {
+      const days = [];
+      const today = new Date();
+      // Start from today
+      for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(today.getDate() + i);
+          days.push(d);
+      }
+      return days;
   };
 
   // --- RENDER ---
@@ -562,7 +596,7 @@ export default function App() {
                             <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}>Join Community</Button>
                          )}
 
-                         <h3 className="font-bold text-sm mb-4">Community Posts</h3>
+                         <h3 className="font-bold text-sm mb-4">Latest Posts</h3>
                          <div className="space-y-4">
                              {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (
                                  <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -577,13 +611,14 @@ export default function App() {
                                          </button>
                                          <button onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} className="flex items-center gap-1 hover:text-blue-500"><MessageCircle className="w-4 h-4"/> {post.comments.length}</button>
                                      </div>
-                                     
                                      {/* Nested Comments in Community View */}
                                      {expandedPostId === post.id && (
                                         <div className="mt-4 pt-4 border-t border-slate-50 animate-in slide-in-from-top-2">
                                             <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
                                                 {post.comments.map(c => (
-                                                    <div key={c.id} className="text-xs bg-slate-50 p-2 rounded"><span className="font-bold">{c.authorName}:</span> {c.content}</div>
+                                                    <div key={c.id} className="text-xs bg-slate-50 p-2 rounded">
+                                                        <span className="font-bold text-slate-700">{c.authorName}:</span> {c.content}
+                                                    </div>
                                                 ))}
                                                 {post.comments.length === 0 && <p className="text-xs text-slate-300">No comments yet.</p>}
                                             </div>
@@ -609,7 +644,7 @@ export default function App() {
                                     )}
                                  </div>
                              ))}
-                             {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">No posts yet. Be the first!</p>}
+                             {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">Be the first to post!</p>}
                          </div>
                      </div>
                 </div>
@@ -627,24 +662,91 @@ export default function App() {
                  </div>
             )}
 
+            {/* --- UPDATED SCHEDULE VIEW (Calendar + Add Task + Strikethrough + Confetti) --- */}
             {view === ViewState.SCHEDULE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Mocked)</p></div>
+                <div className="px-6 pt-4 h-full flex flex-col">
+                    <h1 className="text-xl font-bold mb-6">Schedule</h1>
+                    
+                    {/* Calendar Strip */}
+                    <div className="flex justify-between mb-6">
+                        {getWeekDays().map((d, i) => {
+                            const dateStr = d.toISOString().split('T')[0];
+                            const isSelected = selectedDate === dateStr;
+                            const dayName = ['S','M','T','W','T','F','S'][d.getDay()];
+                            return (
+                                <button 
+                                    key={i} 
+                                    onClick={() => setSelectedDate(dateStr)} 
+                                    className={`w-10 h-14 border rounded-xl flex flex-col items-center justify-center text-xs transition-colors ${isSelected ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400'}`}
+                                >
+                                    <span className="text-[10px] font-medium">{dayName}</span>
+                                    <span className="font-bold text-sm">{d.getDate()}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    
+                    {/* Task List */}
+                    <div className="flex-1 overflow-y-auto space-y-2">
+                        {tasks.filter(t => t.date === selectedDate).map(t => (
+                            <div key={t.id} className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm group">
+                                <button onClick={() => handleToggleTask(t.id)}>
+                                    {t.completed ? <CheckCircle className="w-6 h-6 text-green-500"/> : <Circle className="w-6 h-6 text-slate-300"/>}
+                                </button>
+                                {/* Strikethrough style */}
+                                <span className={`flex-1 text-sm ${t.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                    {t.title}
+                                </span>
+                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto text-slate-300 hover:text-red-500">
+                                    <Trash2 className="w-4 h-4"/>
+                                </button>
+                            </div>
+                        ))}
+                        {tasks.filter(t => t.date === selectedDate).length === 0 && (
+                            <div className="text-center py-10">
+                                <p className="text-sm text-slate-400">No tasks for today.</p>
+                            </div>
+                        )}
+                    </div>
+                    
+                    {/* Add Task Input */}
+                    <div className="bg-white p-2 rounded-2xl shadow-lg border flex gap-2 mt-4 absolute bottom-24 left-6 right-6">
+                        <input 
+                            id="new-task" 
+                            className="flex-1 pl-4 outline-none text-sm bg-transparent" 
+                            placeholder="Add a new task..." 
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    const target = e.target as HTMLInputElement;
+                                    if(target.value) { handleAddTask(target.value); target.value = ''; }
+                                }
+                            }}
+                        />
+                        <button 
+                            onClick={() => { 
+                                const input = document.getElementById('new-task') as HTMLInputElement; 
+                                if(input.value) { handleAddTask(input.value); input.value = ''; } 
+                            }} 
+                            className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-700 transition-colors"
+                        >
+                            <Plus className="w-5 h-5"/>
+                        </button>
+                    </div>
+                </div>
             )}
 
-        </div>
-
-        {/* NAV */}
-        {![ViewState.LOGIN, ViewState.REGISTER].includes(view) && (
-            <div className="absolute bottom-6 left-6 right-6">
-                <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
-                    <button onClick={() => setView(ViewState.FEED)}><Home className={`w-6 h-6 ${view === ViewState.FEED ? 'text-slate-900' : 'text-slate-400'}`} /></button>
-                    <button onClick={() => setView(ViewState.EXPLORE)}><Compass className={`w-6 h-6 ${view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
-                    <button onClick={() => setView(ViewState.CREATE_POST)}><Plus className="bg-slate-900 text-white p-2 rounded-full w-10 h-10 -mt-8 border-4 border-white shadow-lg" /></button>
-                    <button onClick={() => setView(ViewState.PROFILE)}><UserIcon className={`w-6 h-6 ${view === ViewState.PROFILE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
-                    <button onClick={() => setView(ViewState.SCHEDULE)}><Calendar className={`w-6 h-6 ${view === ViewState.SCHEDULE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+            {/* NAV */}
+            {![ViewState.LOGIN, ViewState.REGISTER].includes(view) && (
+                <div className="absolute bottom-6 left-6 right-6">
+                    <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
+                        <button onClick={() => setView(ViewState.FEED)}><Home className={`w-6 h-6 ${view === ViewState.FEED ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+                        <button onClick={() => setView(ViewState.EXPLORE)}><Compass className={`w-6 h-6 ${view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+                        <button onClick={() => setView(ViewState.CREATE_POST)}><Plus className="bg-slate-900 text-white p-2 rounded-full w-10 h-10 -mt-8 border-4 border-white shadow-lg" /></button>
+                        <button onClick={() => setView(ViewState.PROFILE)}><UserIcon className={`w-6 h-6 ${view === ViewState.PROFILE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+                        <button onClick={() => setView(ViewState.SCHEDULE)}><Calendar className={`w-6 h-6 ${view === ViewState.SCHEDULE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+                    </div>
                 </div>
-            </div>
-        )}
+            )}
       </div>
     </div>
   );

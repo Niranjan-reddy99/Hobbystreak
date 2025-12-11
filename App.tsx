@@ -215,73 +215,80 @@ export default function App() {
      if (tasksData) setTasks(tasksData);
   };
 
-  // FETCH HOBBIES & POSTS (now includes likes + comments awareness)
   const fetchHobbiesAndPosts = async (currentUserId?: string | null) => {
   if (!supabase) return;
 
-  // 1. Fetch hobbies
-  const { data: hobbiesData } = await supabase.from('hobbies').select('*');
+  // 1. Fetch Hobbies
+  const { data: hobbiesData } = await supabase.from("hobbies").select("*");
   if (hobbiesData) {
     const formattedHobbies = hobbiesData.map((h: any) => ({
-      id: h.id,
-      name: h.name,
-      description: h.description,
-      category: h.category,
+      ...h,
       memberCount: h.member_count || 0,
-      icon: h.icon || '✨',
-      image: h.image_url
+      image:
+        h.image_url ||
+        "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=600&q=80",
+      icon: h.icon || "✨",
     }));
     setHobbies(formattedHobbies);
   }
 
-  // 2. Fetch posts
+  // 2. Fetch Posts
   const { data: postsData } = await supabase
-    .from('posts')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .from("posts")
+    .select("*")
+    .order("created_at", { ascending: false });
 
   if (!postsData) return;
 
-  // -- FIX: GET ALL UNIQUE USER IDS FOR AUTHOR NAME --
+  // ⭐ FIX: Fetch all authors in one query
   const userIds = [...new Set(postsData.map((p: any) => p.user_id))];
 
-  let authors: Record<string, any> = {};
+  let authorMap: Record<string, { name: string; avatar: string }> = {};
 
   if (userIds.length > 0) {
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('id, name, avatar')
-      .in('id', userIds);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, name, avatar")
+      .in("id", userIds);
 
-    if (profileData) {
-      profileData.forEach((u: any) => {
-        authors[u.id] = {
-          name: u.name || 'User',
-          avatar: u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`
+    if (profiles) {
+      profiles.forEach((p: any) => {
+        authorMap[p.id] = {
+          name: p.name || "User",
+          avatar:
+            p.avatar ||
+            `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.id}`,
         };
       });
     }
   }
 
-  // 3. Fetch comments
-  const { data: commentsData } = await supabase.from('comments').select('*');
+  // 3. Fetch Comments
+  const { data: commentsData } = await supabase.from("comments").select("*");
 
-  // 4. Fetch likes
+  // 4. Fetch likes for current user
   let myLikedPostIds: string[] = [];
   if (currentUserId) {
-    const { data: likeRows } = await supabase
-      .from('post_likes')
-      .select('post_id')
-      .eq('user_id', currentUserId);
-
-    if (likeRows) {
-      myLikedPostIds = likeRows.map((l: any) => l.post_id);
-    }
+    const { data: likes } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .eq("user_id", currentUserId);
+    if (likes) myLikedPostIds = likes.map((l: any) => l.post_id);
   }
 
-  // -- FIX: BUILD POSTS WITH REAL AUTHOR NAMES --
-  const formattedPosts: Post[] = postsData.map((p: any) => {
-    const postAuthor = authors[p.user_id];
+  // ⭐ FINAL BUILD: Posts WITH CORRECT authorName and avatar
+  const formattedPosts = postsData.map((p: any) => {
+    const author = authorMap[p.user_id];
+
+    const filteredComments =
+      commentsData
+        ?.filter((c: any) => c.post_id === p.id)
+        .map((c: any) => ({
+          id: c.id,
+          userId: c.user_id,
+          content: c.content,
+          authorName: authorMap[c.user_id]?.name || "User",
+        })) || [];
 
     return {
       id: p.id,
@@ -290,23 +297,16 @@ export default function App() {
       content: p.content,
       likes: p.likes || 0,
       isLiked: myLikedPostIds.includes(p.id),
-      authorName: postAuthor?.name || 'User',
-      authorAvatar: postAuthor?.avatar,
+      comments: filteredComments,
+      authorName: author?.name || "User",
+      authorAvatar: author?.avatar,
       timestamp: new Date(p.created_at).toLocaleDateString(),
-      comments:
-        commentsData
-          ?.filter((c: any) => c.post_id === p.id)
-          .map((c: any) => ({
-            id: c.id,
-            userId: c.user_id,
-            content: c.content,
-            authorName: authors[c.user_id]?.name || 'User'
-          })) || []
     };
   });
 
   setPosts(formattedPosts);
 };
+
 
 
      // 2. Fetch Posts

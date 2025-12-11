@@ -47,6 +47,7 @@ interface Hobby { id: string; name: string; description: string; category: Hobby
 
 interface Comment { id: string; userId: string; content: string; authorName: string; }
 
+// Updated Post type to include comments and 'isLiked'
 interface Post { 
   id: string; userId: string; hobbyId: string | null; content: string; 
   likes: number; isLiked: boolean; comments: Comment[]; 
@@ -136,7 +137,7 @@ export default function App() {
             }
         } catch (e) { console.log("Session check failed", e); }
         
-        // Initial load of tasks will happen in loadUserProfile
+        setTasks(INITIAL_TASKS);
         setIsAppLoading(false);
     };
     initApp();
@@ -158,17 +159,16 @@ export default function App() {
 
       const { data: joined } = await supabase.from('user_hobbies').select('hobby_id').eq('user_id', user.id);
       if (joined) {
-          setJoinedHobbyIds(joined.map((j: any) => j.hobby_id));
+          const ids = joined.map((j: any) => j.hobby_id);
+          setJoinedHobbyIds(ids);
+          if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
       }
-
-      // Load Tasks for this user
-      const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', user.id);
-      if (tasksData) setTasks(tasksData);
   };
 
   const fetchHobbiesAndPosts = async (currentUserId: string | null) => {
       if (!supabase) return;
       
+      // Hobbies
       const { data: hobbiesData } = await supabase.from('hobbies').select('*');
       if (hobbiesData) {
           setHobbies(hobbiesData.map((h: any) => ({
@@ -177,6 +177,7 @@ export default function App() {
           })));
       }
 
+      // Posts & Comments
       const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
       if (postsData) {
           const userIds = [...new Set(postsData.map((p:any) => p.user_id).filter(Boolean))];
@@ -186,8 +187,10 @@ export default function App() {
               authors = data || [];
           }
 
+          // Fetch ALL Comments (Simple MVP approach)
           const { data: commentsData } = await supabase.from('comments').select('*');
           
+          // Fetch My Likes
           let myLikedPostIds: string[] = [];
           if (currentUserId) {
               const { data: likes } = await supabase.from('post_likes').select('post_id').eq('user_id', currentUserId);
@@ -198,10 +201,14 @@ export default function App() {
               const author = authors.find((a: any) => a.id === p.user_id);
               const postComments = commentsData?.filter((c:any) => c.post_id === p.id) || [];
               
-              const mappedComments = postComments.map((c: any) => ({
-                  id: c.id, userId: c.user_id, content: c.content,
-                  authorName: 'User'
-              }));
+              // Map comments
+              const mappedComments = postComments.map((c: any) => {
+                  // If we had comment author data, we'd map it here. For now, simple name.
+                  return {
+                      id: c.id, userId: c.user_id, content: c.content,
+                      authorName: 'User' // In a full app, we would fetch comment authors too
+                  };
+              });
 
               return {
                   id: p.id, userId: p.user_id, hobbyId: p.hobby_id, content: p.content,
@@ -231,7 +238,7 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    if (!supabase) { setIsLoading(false); return; }
+    if (!supabase) return;
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
@@ -316,7 +323,7 @@ export default function App() {
       const { error } = await supabase.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
       if (error) {
           showToast("Failed to comment", "error");
-          fetchHobbiesAndPosts(currentUser.id);
+          fetchHobbiesAndPosts(currentUser.id); // Revert on error
       }
   };
 
@@ -358,46 +365,6 @@ export default function App() {
           setJoinedHobbyIds(prev => [...prev, hobbyId]);
           showToast("Synced!");
       }
-  };
-
-  // --- SCHEDULE LOGIC (NEW: Add, Toggle, Delete, Confetti) ---
-  const handleAddTask = async (title: string) => {
-      if (!currentUser) return showToast("Login to add tasks");
-      
-      const { data, error } = await supabase.from('tasks').insert({ 
-          user_id: currentUser.id, title, date: selectedDate, completed: false 
-      }).select().single();
-
-      if (data && !error) {
-          setTasks(prev => [...prev, data]);
-          showToast("Task added");
-      }
-  };
-
-  const handleToggleTask = async (task: Task) => {
-      const isCompleting = !task.completed;
-      if (isCompleting) triggerConfetti(); // 🎉 Confetti Effect
-
-      // Optimistic Update
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: isCompleting } : t));
-      
-      await supabase.from('tasks').update({ completed: isCompleting }).eq('id', task.id);
-  };
-
-  const handleDeleteTask = async (id: string) => {
-      setTasks(prev => prev.filter(t => t.id !== id));
-      await supabase.from('tasks').delete().eq('id', id);
-  };
-
-  const getWeekDays = () => {
-      const days = [];
-      const today = new Date();
-      for (let i = 0; i < 7; i++) {
-          const d = new Date(today);
-          d.setDate(today.getDate() + i);
-          days.push(d);
-      }
-      return days;
   };
 
   // --- RENDER ---
@@ -595,16 +562,22 @@ export default function App() {
                             <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)}>Join Community</Button>
                          )}
 
-                         <h3 className="font-bold text-sm mb-4">Latest Posts</h3>
+                         <h3 className="font-bold text-sm mb-4">Community Posts</h3>
                          <div className="space-y-4">
                              {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (
                                  <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                      <div className="flex items-center gap-2 mb-2"><img src={post.authorAvatar} className="w-6 h-6 rounded-full" /><span className="text-xs font-bold">{post.authorName}</span></div>
                                      <p className="text-sm text-slate-700">{post.content}</p>
                                      <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
-                                         <button onClick={() => handleLike(post)} className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}><Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}/> {post.likes}</button>
+                                         <button 
+                                            onClick={() => handleLike(post)} 
+                                            className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
+                                         >
+                                            <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}/> {post.likes}
+                                         </button>
                                          <button onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} className="flex items-center gap-1 hover:text-blue-500"><MessageCircle className="w-4 h-4"/> {post.comments.length}</button>
                                      </div>
+                                     
                                      {/* Nested Comments in Community View */}
                                      {expandedPostId === post.id && (
                                         <div className="mt-4 pt-4 border-t border-slate-50 animate-in slide-in-from-top-2">
@@ -615,7 +588,18 @@ export default function App() {
                                                 {post.comments.length === 0 && <p className="text-xs text-slate-300">No comments yet.</p>}
                                             </div>
                                             <div className="flex gap-2">
-                                                <input id={`comm-comm-${post.id}`} className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none" placeholder="Reply..." onKeyDown={(e) => { if (e.key === 'Enter') { const target = e.target as HTMLInputElement; handleComment(post.id, target.value); target.value = ''; } }} />
+                                                <input 
+                                                    id={`comm-comm-${post.id}`} 
+                                                    className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none focus:ring-1 ring-slate-200" 
+                                                    placeholder="Write a reply..." 
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const target = e.target as HTMLInputElement;
+                                                            handleComment(post.id, target.value);
+                                                            target.value = '';
+                                                        }
+                                                    }}
+                                                />
                                                 <button onClick={() => {
                                                     const input = document.getElementById(`comm-comm-${post.id}`) as HTMLInputElement;
                                                     if (input.value) { handleComment(post.id, input.value); input.value = ''; }
@@ -625,7 +609,7 @@ export default function App() {
                                     )}
                                  </div>
                              ))}
-                             {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">Be the first to post!</p>}
+                             {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && <p className="text-center text-sm text-slate-400 py-4">No posts yet. Be the first!</p>}
                          </div>
                      </div>
                 </div>
@@ -643,71 +627,24 @@ export default function App() {
                  </div>
             )}
 
-            {/* --- UPDATED SCHEDULE VIEW (Calendar Strip + Add Task + Confetti) --- */}
             {view === ViewState.SCHEDULE && (
-                <div className="px-6 pt-4 h-full flex flex-col">
-                    <h1 className="text-xl font-bold mb-6">Schedule</h1>
-                    
-                    {/* Calendar Strip */}
-                    <div className="flex justify-between mb-6">
-                        {getWeekDays().map((d, i) => {
-                            const dateStr = d.toISOString().split('T')[0];
-                            const isSelected = selectedDate === dateStr;
-                            const dayName = ['S','M','T','W','T','F','S'][d.getDay()];
-                            return (
-                                <button key={i} onClick={() => setSelectedDate(dateStr)} className={`w-10 h-14 border rounded-xl flex flex-col items-center justify-center text-xs transition-colors ${isSelected ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400'}`}>
-                                    <span className="text-[10px] font-medium">{dayName}</span>
-                                    <span className="font-bold text-sm">{d.getDate()}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                    
-                    {/* Task List */}
-                    <div className="flex-1 overflow-y-auto space-y-2">
-                        {tasks.filter(t => t.date === selectedDate).map(t => (
-                            <div key={t.id} className="bg-white p-4 rounded-xl flex items-center gap-3 shadow-sm group">
-                                <button onClick={() => handleToggleTask(t)}>
-                                    {t.completed ? <CheckCircle className="w-6 h-6 text-green-500"/> : <Circle className="w-6 h-6 text-slate-300"/>}
-                                </button>
-                                {/* Strikethrough style */}
-                                <span className={`flex-1 text-sm ${t.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
-                                <button onClick={() => handleDeleteTask(t.id)} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
-                            </div>
-                        ))}
-                        {tasks.filter(t => t.date === selectedDate).length === 0 && <p className="text-center text-slate-400 text-xs mt-10">No events.</p>}
-                    </div>
-                    
-                    {/* Add Task Input */}
-                    <div className="bg-white p-2 rounded-2xl shadow-lg border flex gap-2 mt-4 absolute bottom-24 left-6 right-6">
-                        <input id="new-task" className="flex-1 pl-4 outline-none text-sm bg-transparent" placeholder="Add event..." 
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    const target = e.target as HTMLInputElement;
-                                    if(target.value) { handleAddTask(target.value); target.value = ''; }
-                                }
-                            }}
-                        />
-                        <button onClick={() => { 
-                            const input = document.getElementById('new-task') as HTMLInputElement; 
-                            if(input.value) { handleAddTask(input.value); input.value = ''; } 
-                        }} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-slate-700 transition-colors"><Plus className="w-5 h-5"/></button>
-                    </div>
-                </div>
+                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Mocked)</p></div>
             )}
 
-            {/* NAV */}
-            {![ViewState.LOGIN, ViewState.REGISTER].includes(view) && (
-                <div className="absolute bottom-6 left-6 right-6">
-                    <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
-                        <button onClick={() => setView(ViewState.FEED)}><Home className={`w-6 h-6 ${view === ViewState.FEED ? 'text-slate-900' : 'text-slate-400'}`} /></button>
-                        <button onClick={() => setView(ViewState.EXPLORE)}><Compass className={`w-6 h-6 ${view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
-                        <button onClick={() => setView(ViewState.CREATE_POST)}><Plus className="bg-slate-900 text-white p-2 rounded-full w-10 h-10 -mt-8 border-4 border-white shadow-lg" /></button>
-                        <button onClick={() => setView(ViewState.PROFILE)}><UserIcon className={`w-6 h-6 ${view === ViewState.PROFILE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
-                        <button onClick={() => setView(ViewState.SCHEDULE)}><Calendar className={`w-6 h-6 ${view === ViewState.SCHEDULE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
-                    </div>
+        </div>
+
+        {/* NAV */}
+        {![ViewState.LOGIN, ViewState.REGISTER].includes(view) && (
+            <div className="absolute bottom-6 left-6 right-6">
+                <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
+                    <button onClick={() => setView(ViewState.FEED)}><Home className={`w-6 h-6 ${view === ViewState.FEED ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+                    <button onClick={() => setView(ViewState.EXPLORE)}><Compass className={`w-6 h-6 ${view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+                    <button onClick={() => setView(ViewState.CREATE_POST)}><Plus className="bg-slate-900 text-white p-2 rounded-full w-10 h-10 -mt-8 border-4 border-white shadow-lg" /></button>
+                    <button onClick={() => setView(ViewState.PROFILE)}><UserIcon className={`w-6 h-6 ${view === ViewState.PROFILE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
+                    <button onClick={() => setView(ViewState.SCHEDULE)}><Calendar className={`w-6 h-6 ${view === ViewState.SCHEDULE ? 'text-slate-900' : 'text-slate-400'}`} /></button>
                 </div>
-            )}
+            </div>
+        )}
       </div>
     </div>
   );

@@ -48,14 +48,21 @@ interface UserProfile {
 }
 
 interface Hobby { id: string; name: string; description: string; category: HobbyCategory; memberCount: number; icon: string; image: string; }
+
 interface Comment { id: string; userId: string; content: string; authorName: string; }
-interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: Comment[]; authorName: string; authorAvatar?: string; timestamp: string; }
-interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
+
+interface Post { 
+  id: string; userId: string; hobbyId: string | null; content: string; 
+  likes: number; comments: Comment[]; 
+  authorName: string; authorAvatar?: string; timestamp: string; 
+}
+
+interface Task { id: string; title: string; date: string; completed: boolean; }
 
 // ==========================================
 // 3. CONSTANTS & COMPONENTS
 // ==========================================
-const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
+const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false }];
 
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
@@ -102,7 +109,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [joinedHobbyIds, setJoinedHobbyIds] = useState<string[]>([]);
 
-  // Inputs
+  // UI State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -126,7 +133,6 @@ export default function App() {
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
-                // Pass session user explicitly
                 await loadUserProfile(session.user);
                 setView(ViewState.FEED);
             }
@@ -141,7 +147,7 @@ export default function App() {
   const loadUserProfile = async (user: any) => {
       if (!supabase) return;
       
-      // Try to get profile from DB
+      // FIX: Use maybeSingle() to avoid 406 error if profile is missing
       const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
       
       if (profile && !error) {
@@ -153,12 +159,10 @@ export default function App() {
               stats: profile.stats || { totalStreak: 0, points: 0 }
           });
       } else {
-          // CRITICAL FIX: If profile is missing in DB (because we wiped it), use Auth data temporarily
-          // This prevents currentUser from being null
-          console.warn("Profile missing in DB, using Auth data fallback");
+          // Fallback: Create a temporary user object so the app doesn't crash
           setCurrentUser({
               id: user.id,
-              name: user.email?.split('@')[0] || 'User',
+              name: user.email?.split('@')[0],
               email: user.email || '',
               avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
               stats: { totalStreak: 0, points: 0 }
@@ -172,10 +176,16 @@ export default function App() {
           setJoinedHobbyIds(ids);
           if (ids.length > 0) setSelectedPostHobbyId(ids[0]);
       }
-      
+
       // Load Tasks
       const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', user.id);
       if (tasksData) setTasks(tasksData);
+  };
+
+  const fetchTasks = async (userId: string) => {
+      if (!supabase) return;
+      const { data } = await supabase.from('tasks').select('*').eq('user_id', userId);
+      if (data) setTasks(data);
   };
 
   const fetchHobbiesAndPosts = async () => {
@@ -241,8 +251,7 @@ export default function App() {
     if (error) {
         showToast(error.message, 'error');
     } else if (data.session) {
-        // --- CRITICAL FIX: RE-CREATE PROFILE IF MISSING ---
-        // This ensures the DB row exists, so subsequent posts have a valid user_id
+        // Force Profile Creation if missing (Upsert)
         await supabase.from('profiles').upsert({
             id: data.session.user.id,
             email: email,
@@ -295,14 +304,6 @@ export default function App() {
           await supabase!.from('hobbies').update({ member_count: (current?.memberCount || 0) + 1 }).eq('id', hobbyId);
           fetchHobbiesAndPosts();
           showToast("Joined!");
-      } else {
-          // If already joined (unique constraint), just update local state
-          if (error.code === '23505') {
-              setJoinedHobbyIds(prev => [...prev, hobbyId]);
-              showToast("Joined (Synced)");
-          } else {
-              showToast("Error joining", 'error');
-          }
       }
   };
 
@@ -348,29 +349,13 @@ export default function App() {
   // --- POST ACTIONS ---
 
   const handleCreatePost = async (content: string) => {
-      if (!supabase) return showToast("DB Error", "error");
-      
-      // Get User ID from state or session or null
-      let uid = currentUser?.id || null; 
-
-      const { error } = await supabase.from('posts').insert({
-          user_id: uid,
-          hobby_id: selectedPostHobbyId || null,
-          content
-      });
-
+      const uid = currentUser?.id;
+      const { error } = await supabase!.from('posts').insert({ user_id: uid, hobby_id: selectedPostHobbyId || null, content });
       if (!error) {
-          if (uid && currentUser) {
-              const newStats = { points: currentUser.stats.points + 20, totalStreak: currentUser.stats.totalStreak + 1 };
-              await supabase.from('profiles').update({ stats: newStats }).eq('id', uid);
-              setCurrentUser({ ...currentUser, stats: newStats });
-          }
           await fetchHobbiesAndPosts();
           if (view !== ViewState.COMMUNITY_DETAILS) setView(ViewState.FEED);
           triggerConfetti();
           showToast("Posted!");
-      } else {
-          showToast("Error: " + error.message, 'error');
       }
   };
 
@@ -413,6 +398,7 @@ export default function App() {
 
   // --- RENDER ---
   const myCommunities = hobbies.filter(h => joinedHobbyIds.includes(h.id));
+
   if (isAppLoading) return <div className="min-h-screen bg-neutral-900 flex items-center justify-center"><Loader2 className="text-white animate-spin w-8 h-8"/></div>;
 
   return (
@@ -421,7 +407,7 @@ export default function App() {
         
         {/* HEADER */}
         <div className="flex justify-between items-center px-6 py-3 bg-slate-50 text-slate-900 text-xs font-bold sticky top-0 z-20">
-            <span>9:41</span><div className="flex gap-2"><Signal className="w-4 h-4"/><Battery className="w-4 h-4"/></div>
+            <span>9:41</span><div className="flex gap-2"><Signal className="w-4 h-4"/><Wifi className="w-4 h-4"/><Battery className="w-4 h-4"/></div>
         </div>
         {toast && <Toast message={toast.message} type={toast.type} />}
         {showConfetti && <Confetti />}
@@ -463,7 +449,7 @@ export default function App() {
                             return (
                             <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
                                 <div className="flex items-center gap-3 mb-3">
-                                    <img src={post.authorAvatar} className="w-8 h-8 rounded-full" />
+                                    <img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" />
                                     <div className="flex-1">
                                         <span className="text-sm font-bold block">{post.authorName}</span>
                                         {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}

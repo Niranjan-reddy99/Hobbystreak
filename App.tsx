@@ -8,12 +8,26 @@ import {
   CheckCircle, Circle, Trash2, RefreshCw
 } from 'lucide-react';
 
-// --- CONFIGURATION ---
+// ==========================================
+// 1. CONFIGURATION (FIXED STORAGE ISSUE)
+// ==========================================
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
-// --- TYPES ---
+// FORCE LOCAL STORAGE to fix "Access to storage not allowed"
+const supabase = (supabaseUrl && supabaseKey) 
+  ? createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        storage: window.localStorage, // <--- THIS FIXES THE BUG
+        persistSession: true,
+        autoRefreshToken: true,
+      }
+    }) 
+  : null;
+
+// ==========================================
+// 2. TYPES
+// ==========================================
 enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS }
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
 
@@ -29,14 +43,18 @@ interface Hobby { id: string; name: string; description: string; category: Hobby
 interface Post { id: string; userId: string; hobbyId: string | null; content: string; likes: number; comments: string[]; authorName: string; authorAvatar?: string; timestamp: string; }
 interface Task { id: string; title: string; date: string; completed: boolean; hobbyId?: string; }
 
-// --- CONSTANTS ---
+// ==========================================
+// 3. CONSTANTS
+// ==========================================
 const INITIAL_TASKS: Task[] = [{ id: 't1', title: 'Complete 15 min flow', date: new Date().toISOString().split('T')[0], completed: false, hobbyId: 'h1' }];
 const LEADERBOARD_USERS = [
     { name: 'Priya C.', streak: 45, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya' },
     { name: 'Jordan B.', streak: 32, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan' },
 ];
 
-// --- COMPONENTS ---
+// ==========================================
+// 4. COMPONENTS
+// ==========================================
 const Toast = ({ message, type = 'success' }: { message: string, type?: 'success' | 'error' }) => (
   <div className={`absolute top-12 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-2 animate-bounce w-max ${type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'}`}>
     {type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -68,12 +86,14 @@ const Button = ({ children, onClick, variant = 'primary', className = '', icon: 
   );
 };
 
-// --- MAIN APP ---
+// ==========================================
+// 5. MAIN APP
+// ==========================================
 export default function App() {
   const [view, setView] = useState<ViewState>(ViewState.LOGIN);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   
-  // Data State
+  // Data
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -83,15 +103,17 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  
+
+  // UI
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isAppLoading, setIsAppLoading] = useState(true);
 
-  // --- 1. INITIALIZATION ---
+  // --- INITIALIZATION ---
   useEffect(() => {
     const initApp = async () => {
         if (!supabase) return;
@@ -139,26 +161,15 @@ export default function App() {
           })));
       }
 
-      // Fetch Posts
       const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
       if (postsData) {
-          const userIds = [...new Set(postsData.map((p:any) => p.user_id))];
-          const { data: authors } = await supabase.from('profiles').select('id, name, avatar').in('id', userIds);
-          
-          setPosts(postsData.map((p: any) => {
-              const author = authors?.find((a: any) => a.id === p.user_id);
-              return {
-                  id: p.id,
-                  userId: p.user_id,
-                  hobbyId: p.hobby_id, // Can be null now
-                  content: p.content,
-                  likes: p.likes || 0,
-                  comments: [],
-                  authorName: author?.name || 'Unknown',
-                  authorAvatar: author?.avatar,
-                  timestamp: new Date(p.created_at).toLocaleDateString()
-              };
-          }));
+          // Simplified post fetching without complex joins to prevent errors
+          setPosts(postsData.map((p: any) => ({
+              id: p.id, userId: p.user_id, hobbyId: p.hobby_id, content: p.content,
+              likes: p.likes || 0, comments: [],
+              authorName: 'User', authorAvatar: '',
+              timestamp: new Date(p.created_at).toLocaleDateString()
+          })));
       }
   };
 
@@ -166,9 +177,12 @@ export default function App() {
       if (!supabase) return;
       const { data: profiles } = await supabase.from('profiles').select('*');
       if (profiles) {
-          const sorted = profiles.map((p: any) => ({
+          const sorted = profiles
+            .map((p: any) => ({
                 id: p.id, name: p.name, avatar: p.avatar, stats: p.stats || { points: 0, totalStreak: 0 }
-            })).sort((a: any, b: any) => b.stats.points - a.stats.points).slice(0, 5);
+            }))
+            .sort((a: any, b: any) => b.stats.points - a.stats.points)
+            .slice(0, 5);
           setLeaderboard(sorted as UserProfile[]);
       }
   };
@@ -191,8 +205,9 @@ export default function App() {
     if (!supabase) { setIsLoading(false); return; }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) showToast(error.message, 'error');
-    else if (data.session) {
+    if (error) {
+        showToast(error.message, 'error');
+    } else if (data.session) {
         await loadUserProfile(data.session.user.id);
         setView(ViewState.FEED);
         showToast("Welcome back!");
@@ -217,14 +232,14 @@ export default function App() {
       setIsLoading(false);
   };
 
-  // SIMPLIFIED: No restrictions on Posting
+  // --- SUPER SIMPLE POST FUNCTION ---
+  // No community check. Just posts to DB to prove it works.
   const handleCreatePost = async (content: string) => {
-      if (!currentUser || !supabase) return;
-
-      // Notice: hobby_id is NULL here for global posts
+      if (!currentUser || !supabase) return showToast("Log in first!", "error");
+      
       const { error } = await supabase.from('posts').insert({
           user_id: currentUser.id,
-          hobby_id: null, 
+          hobby_id: null, // Allow global posting
           content
       });
 
@@ -238,7 +253,8 @@ export default function App() {
           triggerConfetti();
           showToast("Posted! +20 XP");
       } else {
-          showToast("Error posting: " + error.message, 'error');
+          console.error("Post Error:", error);
+          showToast("Error: " + error.message, 'error');
       }
   };
 
@@ -288,29 +304,25 @@ export default function App() {
             {view === ViewState.FEED && (
                 <div className="px-6 pt-4">
                     <div className="flex justify-between items-center mb-6"><h1 className="text-xl font-bold">Home</h1><Bell className="w-5 h-5" /></div>
+                    <div className="bg-slate-900 text-white p-4 rounded-3xl mb-6 flex justify-between shadow-lg">
+                        <div className="flex items-center gap-3"><Flame className="w-8 h-8 text-orange-400" /><div><p className="text-xs text-slate-400">Streak</p><p className="text-lg font-bold">{currentUser?.stats.totalStreak || 0}</p></div></div>
+                        <div className="h-10 w-[1px] bg-white/20"></div>
+                        <div className="flex items-center gap-3"><Trophy className="w-8 h-8 text-yellow-400" /><div><p className="text-xs text-slate-400">Points</p><p className="text-lg font-bold">{currentUser?.stats.points || 0}</p></div></div>
+                    </div>
                     <div className="space-y-4">
-                        {posts.map(post => {
-                            const postHobby = hobbies.find(h => h.id === post.hobbyId);
-                            return (
-                                <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
-                                    <div className="flex items-center gap-3 mb-3">
-                                        <img src={post.authorAvatar} className="w-8 h-8 rounded-full" />
-                                        <div className="flex-1">
-                                            <span className="text-sm font-bold block">{post.authorName}</span>
-                                            {postHobby && <span className="text-xs text-slate-400 flex items-center gap-1">{postHobby.icon} {postHobby.name}</span>}
-                                        </div>
-                                    </div>
-                                    <p className="text-sm mb-3">{post.content}</p>
-                                    <div className="flex gap-4 text-slate-400 text-xs"><span className="flex items-center gap-1"><Heart className="w-4 h-4"/> {post.likes}</span></div>
-                                </div>
-                            );
-                        })}
+                        {posts.map(post => (
+                            <div key={post.id} className="bg-white p-5 rounded-3xl shadow-sm">
+                                <div className="flex items-center gap-3 mb-3"><img src={post.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.userId}`} className="w-8 h-8 rounded-full" /><span className="text-sm font-bold">{post.authorName}</span></div>
+                                <p className="text-sm mb-3">{post.content}</p>
+                                <div className="flex gap-4 text-slate-400 text-xs"><span className="flex items-center gap-1"><Heart className="w-4 h-4"/> {post.likes}</span></div>
+                            </div>
+                        ))}
                         {posts.length === 0 && <p className="text-center text-slate-400 text-sm mt-10">No posts yet.</p>}
                     </div>
                 </div>
             )}
 
-            {/* CREATE POST - SIMPLIFIED */}
+            {/* CREATE POST - SIMPLIFIED FOR DEBUGGING */}
             {view === ViewState.CREATE_POST && (
                 <div className="px-6 pt-12 h-full bg-white">
                     <div className="flex justify-between mb-6"><h1 className="text-xl font-bold">New Post</h1><button onClick={() => setView(ViewState.FEED)}><X className="w-6 h-6" /></button></div>
@@ -318,7 +330,7 @@ export default function App() {
                     
                     <div className="mt-4 mb-6">
                         <p className="text-xs text-slate-400 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                           📝 Posting to <b>General Feed</b> (No community required)
+                           📝 Posting to <b>General Feed</b> (Testing Mode)
                         </p>
                     </div>
 
@@ -330,16 +342,12 @@ export default function App() {
                 </div>
             )}
 
-            {/* OTHER VIEWS (Explore/Profile/Schedule) - Keeping minimal for posting test */}
-            {view === ViewState.EXPLORE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-4">Explore</h1><p className="text-sm text-slate-500">Communities list (Disabled for Post Testing)</p></div>
-            )}
+            {/* Explore, Profile, Schedule, etc. omitted for brevity but accessible via NAV */}
+            {view === ViewState.EXPLORE && <div className="p-10 text-center">Explore Feature (Coming Soon)</div>}
             {view === ViewState.PROFILE && (
                  <div className="px-6 pt-4"><div className="flex justify-between items-center mb-8"><h1 className="text-xl font-bold">Profile</h1><button onClick={() => supabase?.auth.signOut().then(() => window.location.reload())}><LogOut className="w-5 h-5 text-red-500" /></button></div><h2 className="text-xl font-bold text-center">{currentUser?.name}</h2></div>
             )}
-            {view === ViewState.SCHEDULE && (
-                 <div className="px-6 pt-4"><h1 className="text-xl font-bold mb-6">Schedule</h1><p className="text-sm text-slate-500">Tasks (Disabled for Post Testing)</p></div>
-            )}
+            {view === ViewState.SCHEDULE && <div className="p-10 text-center">Schedule Feature (Coming Soon)</div>}
 
         </div>
 

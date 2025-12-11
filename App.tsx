@@ -217,19 +217,97 @@ export default function App() {
 
   // FETCH HOBBIES & POSTS (now includes likes + comments awareness)
   const fetchHobbiesAndPosts = async (currentUserId?: string | null) => {
-     if (!supabase) return;
-     
-     // 1. Fetch Hobbies
-     const { data: hobbiesData } = await supabase.from('hobbies').select('*');
-     if (hobbiesData) {
-         const formattedHobbies = hobbiesData.map((h: any) => ({
-             ...h,
-             memberCount: h.member_count || 0,
-             image: h.image_url || 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=600&q=80',
-             icon: h.icon || '✨'
-         }));
-         setHobbies(formattedHobbies);
-     }
+  if (!supabase) return;
+
+  // 1. Fetch hobbies
+  const { data: hobbiesData } = await supabase.from('hobbies').select('*');
+  if (hobbiesData) {
+    const formattedHobbies = hobbiesData.map((h: any) => ({
+      id: h.id,
+      name: h.name,
+      description: h.description,
+      category: h.category,
+      memberCount: h.member_count || 0,
+      icon: h.icon || '✨',
+      image: h.image_url
+    }));
+    setHobbies(formattedHobbies);
+  }
+
+  // 2. Fetch posts
+  const { data: postsData } = await supabase
+    .from('posts')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (!postsData) return;
+
+  // -- FIX: GET ALL UNIQUE USER IDS FOR AUTHOR NAME --
+  const userIds = [...new Set(postsData.map((p: any) => p.user_id))];
+
+  let authors: Record<string, any> = {};
+
+  if (userIds.length > 0) {
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id, name, avatar')
+      .in('id', userIds);
+
+    if (profileData) {
+      profileData.forEach((u: any) => {
+        authors[u.id] = {
+          name: u.name || 'User',
+          avatar: u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`
+        };
+      });
+    }
+  }
+
+  // 3. Fetch comments
+  const { data: commentsData } = await supabase.from('comments').select('*');
+
+  // 4. Fetch likes
+  let myLikedPostIds: string[] = [];
+  if (currentUserId) {
+    const { data: likeRows } = await supabase
+      .from('post_likes')
+      .select('post_id')
+      .eq('user_id', currentUserId);
+
+    if (likeRows) {
+      myLikedPostIds = likeRows.map((l: any) => l.post_id);
+    }
+  }
+
+  // -- FIX: BUILD POSTS WITH REAL AUTHOR NAMES --
+  const formattedPosts: Post[] = postsData.map((p: any) => {
+    const postAuthor = authors[p.user_id];
+
+    return {
+      id: p.id,
+      userId: p.user_id,
+      hobbyId: p.hobby_id,
+      content: p.content,
+      likes: p.likes || 0,
+      isLiked: myLikedPostIds.includes(p.id),
+      authorName: postAuthor?.name || 'User',
+      authorAvatar: postAuthor?.avatar,
+      timestamp: new Date(p.created_at).toLocaleDateString(),
+      comments:
+        commentsData
+          ?.filter((c: any) => c.post_id === p.id)
+          .map((c: any) => ({
+            id: c.id,
+            userId: c.user_id,
+            content: c.content,
+            authorName: authors[c.user_id]?.name || 'User'
+          })) || []
+    };
+  });
+
+  setPosts(formattedPosts);
+};
+
 
      // 2. Fetch Posts
      const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });

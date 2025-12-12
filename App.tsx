@@ -1,4 +1,4 @@
-// App.tsx — CLEAN VERSION (single file)
+// App.tsx — CLEAN VERSION (single file) 
 import './App.css';
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';

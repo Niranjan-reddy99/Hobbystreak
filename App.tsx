@@ -154,6 +154,8 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]); 
   
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
+  const [selectedHobbyId, setSelectedHobbyId] = useState<string | null>(null);
+
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
@@ -794,26 +796,30 @@ return (
             )}
 
             {view === ViewState.CREATE_POST && (
-                <div className="h-full bg-white p-6 pt-12">
-                   <div className="flex justify-between items-center mb-6">
-                       <h2 className="text-xl font-bold">New Post</h2>
-                       <button onClick={() => setView(ViewState.FEED)}><X className="w-6 h-6" /></button>
-                   </div>
-                   <textarea 
-                       className="w-full h-40 bg-slate-50 p-4 rounded-2xl resize-none outline-none text-sm" 
-                       placeholder="What did you achieve today?"
-                       id="post-content"
-                   />
-                   <div className="mt-4">
-                       <p className="text-xs font-bold text-slate-400 uppercase mb-2">Select Community</p>
-                       <div className="flex gap-2 overflow-x-auto pb-2">
-                           {hobbies.filter(h => currentUser?.joinedHobbies.includes(h.id)).map(h => (
-                               <button key={h.id} className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap">
-                                   <span>{h.icon}</span> {h.name}
-                               </button>
-                           ))}
-                       </div>
-                   </div>
+                <div className="flex gap-2 overflow-x-auto pb-2">
+  {hobbies
+    .filter(h => currentUser?.joinedHobbies.includes(h.id))
+    .map(h => (
+      <button
+        key={h.id}
+        onClick={() => {
+          setSelectedHobbyId(h.id);
+          setSelectedHobby(h);
+        }}
+        className={`px-3 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap border transition
+          ${
+            selectedHobbyId === h.id
+              ? "bg-slate-900 text-white border-slate-900"
+              : "bg-slate-50 text-slate-700 border-slate-200"
+          }
+        `}
+      >
+        <span>{h.icon}</span> {h.name}
+      </button>
+    ))
+  }
+</div>
+
                    <Button className="w-full mt-8" onClick={() => {
                        const content = (document.getElementById('post-content') as HTMLTextAreaElement).value;
                        const firstHobby = currentUser?.joinedHobbies[0];

@@ -768,9 +768,25 @@ export default function App() {
                       <h3 className="font-bold text-sm">{h.name}</h3>
                       <p className="text-xs text-slate-400">{h.memberCount} members</p>
                     </div>
-                    <Button variant={(currentUser?.joinedHobbies || []).includes(h.id) ? 'ghost' : 'secondary'} className="text-xs py-2 px-3 h-auto" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, h.id)}>
-                      {(currentUser?.joinedHobbies || []).includes(h.id) ? 'Joined' : 'Join'}
-                    </Button>
+                    <Button
+  variant={
+    currentUser?.joinedHobbies.includes(h.id)
+      ? "danger"
+      : "secondary"
+  }
+  className="text-xs py-2 px-3 h-auto"
+  onClick={(e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (currentUser?.joinedHobbies.includes(h.id)) {
+      handleLeaveCommunity(h.id);   // 👈 leave
+    } else {
+      handleJoinCommunity(e, h.id); // 👈 join
+    }
+  }}
+>
+  {currentUser?.joinedHobbies.includes(h.id) ? "Leave" : "Join"}
+</Button>
+
                   </div>
                 ))}
               </div>

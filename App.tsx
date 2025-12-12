@@ -1,7 +1,7 @@
 // App.tsx — CLEANED, persistent session (Option 1)
-import './App.css';
-import React, { useState, useEffect } from 'react';
-import { createClient } from "@supabase/supabase-js";
+import "./App.css";
+import React, { useState, useEffect } from "react";
+import { supabase } from "./supabaseClient";  // <<--- CORRECT CLIENT SOURCE
 import {
   Home,
   Compass,
@@ -23,7 +23,12 @@ import {
   Circle,
   Trash2,
   Send
-} from 'lucide-react';
+} from "lucide-react";
+
+// ==========================================
+// TYPES
+// ==========================================
+
 
 // ==========================================
 // CONFIG

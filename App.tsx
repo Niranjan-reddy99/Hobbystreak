@@ -1017,13 +1017,7 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
                   </select>
                 </div>
 
-                <Button className="w-full mt-4" onClick={() => {
-                  const name = (document.getElementById('hobby-name') as HTMLInputElement).value;
-                  const desc = (document.getElementById('hobby-desc') as HTMLTextAreaElement).value;
-                  const cat = (document.getElementById('hobby-cat') as HTMLSelectElement).value as HobbyCategory;
-                  if (name && desc) handleCreateHobby(name, desc, cat);
-                  else showToast('Please fill all fields', 'error');
-                }}>Create Community</Button>
+                
                 <Button
   className="w-full mt-4"
   onClick={() => {

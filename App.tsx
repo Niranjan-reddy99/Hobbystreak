@@ -503,31 +503,56 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
   // -------------------------
   // HOBBY & COMMUNITY HANDLERS
   // -------------------------
-  const handleCreateHobby = async (name: string, description: string, category: HobbyCategory) => {
+  const handleCreateHobby = async (
+  name: string,
+  description: string,
+  category: HobbyCategory
+) => {
   if (!supabase || !currentUser) return;
   setIsLoading(true);
 
   try {
-    // Insert new hobby
+    const icon = getAutoIcon(name, category);
+
     const { data, error } = await supabase
-      .from('hobbies')
+      .from("hobbies")
       .insert({
         name,
         description,
         category,
-        icon: '🌟',
-        member_count: 1
+        icon,
+        image_url:
+          "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?q=80&w=800",
+        member_count: 1,
       })
       .select()
       .single();
 
-    if (error) throw error;   // FORCE catch if any error
+    if (error || !data) {
+      showToast("Failed to create community", "error");
+      setIsLoading(false);
+      return;
+    }
 
-    // Join user into hobby
+    // Auto join creator
     await supabase.from("user_hobbies").insert({
       user_id: currentUser.id,
-      hobby_id: data.id
+      hobby_id: data.id,
     });
+
+    // Refresh data
+    await fetchHobbiesAndPosts(currentUser.id);
+    await fetchData(currentUser.id);
+
+    showToast("Community Created! 🎉");
+    setView(ViewState.EXPLORE);
+  } catch (e) {
+    showToast("Error creating community", "error");
+  }
+
+  setIsLoading(false);
+};
+
 
     showToast("Community Created!");
     await fetchHobbiesAndPosts(currentUser.id);

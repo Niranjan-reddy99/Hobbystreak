@@ -421,81 +421,46 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
       return;
     }
 
-    const user = (data as any)?.user;
+    const user = data?.user;
     if (!user) {
       showToast("Login failed", "error");
       setIsLoading(false);
       return;
     }
 
-    // Fetch profile
-    let { data: profileData } = await supabase
+    // STEP 1 — Fetch profile
+    const { data: profileData } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", user.id)
       .single();
 
-    // 🟩 FIX: if profile missing → create one now
-    if (!profileData) {
-      const newProfile = {
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata?.full_name || "User",
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-        stats: { totalStreak: 0, points: 0 }
-      };
+    // STEP 2 — FIX NAME (paste this exactly here)
+    const fixedName =
+      profileData?.name ||
+      user.user_metadata?.full_name ||
+      (user.email ? user.email.split("@")[0] : "Unknown");
 
-      await supabase.from("profiles").insert(newProfile).single();
-      profileData = newProfile; // use newly created row
-    }
-
-    // Set app user
+    // Set user in React state
     setCurrentUser({
       id: user.id,
-      name: profileData.name,
-      email: profileData.email,
-      avatar: profileData.avatar,
+      name: fixedName,
+      email: user.email || "",
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
       joinedHobbies: [],
-      stats: profileData.stats || { totalStreak: 0, points: 0 }
+      stats: profileData?.stats || { totalStreak: 0, points: 0 }
     });
 
+    // Load app data
     await fetchData(user.id);
     await fetchHobbiesAndPosts(user.id);
 
-    setView(ViewState.FEED);
     showToast("Welcome back!");
+    setView(ViewState.FEED);
+
   } catch (err: any) {
-    console.error("login error", err);
+    console.error("login error:", err);
     showToast("Login failed", "error");
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-
-  const handleRegister = async () => {
-  if (!supabase) return;
-  setIsLoading(true);
-
-  try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: name } }
-    });
-
-    if (error) {
-      showToast(error.message, 'error');
-      setIsLoading(false);
-      return;
-    }
-
-    showToast('Account created! You can now log in.');
-    setView(ViewState.LOGIN);
-
-  } catch (err) {
-    console.error('register error', err);
-    showToast('Failed to register', 'error');
   } finally {
     setIsLoading(false);
   }

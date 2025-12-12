@@ -503,39 +503,44 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
   // -------------------------
   // HOBBY & COMMUNITY HANDLERS
   // -------------------------
-  const handleCreateHobby = async (nameStr: string, description: string, category: HobbyCategory) => {
-    if (!supabase || !currentUser) return;
-    setIsLoading(true);
+  const handleCreateHobby = async (name: string, description: string, category: HobbyCategory) => {
+  if (!supabase || !currentUser) return;
+  setIsLoading(true);
 
-    try {
-      const { data, error } = await supabase
-        .from('hobbies')
-        .insert({
-          name: nameStr,
-          description,
-          category,
-          icon: getAutoIcon(nameStr, category),
-          member_count: 1
-        })
-        .select()
-        .single();
+  try {
+    // Insert new hobby
+    const { data, error } = await supabase
+      .from('hobbies')
+      .insert({
+        name,
+        description,
+        category,
+        icon: '🌟',
+        member_count: 1
+      })
+      .select()
+      .single();
 
-      if (error) {
-        showToast('Failed to create', 'error');
-      } else if (data) {
-        await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id }).catch(() => {});
-        await fetchHobbiesAndPosts(currentUser.id);
-        await fetchData(currentUser.id);
-        setView(ViewState.EXPLORE);
-        showToast('Community Created!');
-      }
-    } catch (e) {
-      console.error('create hobby error', e);
-      showToast('Failed to create', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    if (error) throw error;   // FORCE catch if any error
+
+    // Join user into hobby
+    await supabase.from("user_hobbies").insert({
+      user_id: currentUser.id,
+      hobby_id: data.id
+    });
+
+    showToast("Community Created!");
+    await fetchHobbiesAndPosts(currentUser.id);
+    await fetchData(currentUser.id);
+    setView(ViewState.EXPLORE);
+
+  } catch (err: any) {
+    console.log("Create hobby error:", err.message);
+    showToast("Something went wrong. Try again.", "error");
+  }
+
+  setIsLoading(false);
+};
 
   const handleJoinCommunity = async (e: React.MouseEvent | null, hobbyId: string) => {
     if (e) e.stopPropagation();
@@ -1005,13 +1010,27 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
                   </select>
                 </div>
 
-                <Button className="w-full mt-4" onClick={() => {
-                  const name = (document.getElementById('hobby-name') as HTMLInputElement).value;
-                  const desc = (document.getElementById('hobby-desc') as HTMLTextAreaElement).value;
-                  const cat = (document.getElementById('hobby-cat') as HTMLSelectElement).value as HobbyCategory;
-                  if (name && desc) handleCreateHobby(name, desc, cat);
-                  else showToast('Please fill all fields', 'error');
-                }}>Create Community</Button>
+                <Button
+  className="w-full mt-4"
+  onClick={() => {
+    const name = (document.getElementById('hobby-name') as HTMLInputElement).value;
+    const desc = (document.getElementById('hobby-desc') as HTMLTextAreaElement).value;
+    const cat = (document.getElementById('hobby-cat') as HTMLSelectElement).value as HobbyCategory;
+
+    // STEP 3 — Correct input validation
+    if (!name.trim() || !desc.trim()) {
+      showToast("Please fill all fields", "error");
+      return;
+    }
+
+    handleCreateHobby(name.trim(), desc.trim(), cat);
+  }}
+  isLoading={isLoading}   // STEP 2: disable spam-clicks
+  disabled={isLoading}    // STEP 2
+>
+  Create Community
+</Button>
+
               </div>
             </div>
           )}

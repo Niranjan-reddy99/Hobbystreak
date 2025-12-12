@@ -32,7 +32,12 @@ const supabase = (supabaseUrl && supabaseKey)
   : null;
 
 // ========== TYPES & ENUMS ==========
-enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS, NOTIFICATIONS }
+enum ViewState { 
+  LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, 
+  SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS,
+  EDIT_PROFILE   // ✅ ADD THIS
+}
+
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
 
 interface User {
@@ -155,6 +160,10 @@ export default function App() {
   // notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  
+  const [editName, setEditName] = useState('');
+  const [editAvatar, setEditAvatar] = useState('');
+
 
   // --- INITIALIZE ---
   useEffect(() => {
@@ -391,6 +400,31 @@ export default function App() {
     setEmail(''); setPassword(''); setName('');
     setView(ViewState.LOGIN);
   };
+  const handleSaveProfile = async () => {
+  if (!supabase || !currentUser) return;
+  try {
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        name: editName,
+        avatar: editAvatar
+      })
+      .eq("id", currentUser.id);
+
+    if (!error) {
+      setCurrentUser(prev =>
+        prev ? { ...prev, name: editName, avatar: editAvatar } : prev
+      );
+      showToast("Profile updated");
+      setView(ViewState.PROFILE);
+    } else {
+      showToast("Update failed", "error");
+    }
+  } catch (err) {
+    console.error("profile update error", err);
+    showToast("Update failed", "error");
+  }
+};
 
   // ---------- COMMUNITY / POSTS ----------
   const handleCreateHobby = async (nameStr: string, description: string, category: HobbyCategory | string) => {
@@ -971,6 +1005,18 @@ export default function App() {
                 <h2 className="text-xl font-bold">{currentUser?.name}</h2>
                 <p className="text-sm text-slate-400">{currentUser?.email}</p>
               </div>
+              <Button 
+  variant="secondary" 
+  className="w-full mb-4"
+  onClick={() => {
+    setEditName(currentUser?.name || '');
+    setEditAvatar(currentUser?.avatar || '');
+    setView(ViewState.EDIT_PROFILE);
+  }}
+>
+  Edit Profile
+</Button>
+
 
               <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 border border-slate-100">
                 <div className="flex justify-between items-center mb-2">

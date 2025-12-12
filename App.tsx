@@ -320,12 +320,29 @@ export default function App() {
         showToast(error.message, 'error');
     } else if (data.session) {
         // Upsert Profile Logic (Fix for missing profiles)
-        await supabase.from('profiles').upsert({
-           id: data.session.user.id,
-           email: email,
-           name: email.split('@')[0],
-           stats: { points: 0, totalStreak: 0 }
-        });
+        // 1️⃣ Check if profile exists
+const { data: existingProfile } = await supabase
+  .from('profiles')
+  .select('*')
+  .eq('id', data.session.user.id)
+  .single();
+
+// 2️⃣ Extract real name from auth metadata
+const realName =
+  data.session.user.user_metadata?.full_name ||
+  existingProfile?.name ||
+  "User";
+
+// 3️⃣ If profile missing → create new one using REAL name
+if (!existingProfile) {
+  await supabase.from('profiles').insert({
+    id: data.session.user.id,
+    email,
+    name: realName,
+    stats: { points: 0, totalStreak: 0 }
+  });
+}
+
 
         setCurrentUser({
            id: data.session.user.id,

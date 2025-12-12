@@ -1079,12 +1079,13 @@ return (
                 )}
             </div>
         ))}
-
+        
         {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && (
             <p className="text-center text-sm text-slate-400 py-4">No posts yet. Be the first!</p>
         )}
-    </div>
-)}
+    </div>  {/* closes space-y-4 container */}
+)}         {/* closes membership condition */}
+
 
 
             {view === ViewState.PROFILE && (

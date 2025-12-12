@@ -217,6 +217,51 @@ export default function App() {
      const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', userId);
      if (tasksData) setTasks(tasksData);
   };
+// AUTO-ICON GENERATOR
+const getAutoIcon = (hobbyName: string, category?: string): string => {
+  const name = hobbyName.toLowerCase();
+
+  // NAME BASED MATCHES
+  if (name.includes("garden") || name.includes("plant") || name.includes("farm"))
+    return "🌱";
+
+  if (name.includes("cricket"))
+    return "🏏";
+
+  if (name.includes("football") || name.includes("soccer"))
+    return "⚽";
+
+  if (name.includes("run") || name.includes("jog"))
+    return "🏃‍♂️";
+
+  if (name.includes("yoga"))
+    return "🧘‍♀️";
+
+  if (name.includes("cook") || name.includes("food"))
+    return "🍳";
+
+  if (name.includes("art") || name.includes("draw") || name.includes("paint"))
+    return "🎨";
+
+  if (name.includes("music") || name.includes("guitar"))
+    return "🎸";
+
+  if (name.includes("tech") || name.includes("code") || name.includes("program"))
+    return "💻";
+
+  if (name.includes("book") || name.includes("read"))
+    return "📚";
+
+  // CATEGORY-BASED MATCHES
+  switch (category) {
+    case "Fitness": return "💪";
+    case "Creative": return "✨";
+    case "Tech": return "💻";
+    case "Lifestyle": return "🌟";
+  }
+
+  return "⭐";
+};
 
   // FETCH HOBBIES & POSTS (now includes likes + comments awareness)
   const fetchHobbiesAndPosts = async (currentUserId?: string | null) => {
@@ -229,7 +274,8 @@ export default function App() {
             ...h,
             memberCount: h.member_count || 0,
             image: h.image_url || 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=600&q=80',
-            icon: h.icon || '✨'
+            icon: h.icon || getAutoIcon(h.name, h.category),
+
         }));
         setHobbies(formattedHobbies);
     }

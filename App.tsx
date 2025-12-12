@@ -796,38 +796,82 @@ return (
             )}
 
             {view === ViewState.CREATE_POST && (
-                <div className="flex gap-2 overflow-x-auto pb-2">
-  {hobbies
-    .filter(h => currentUser?.joinedHobbies.includes(h.id))
-    .map(h => (
-      <button
-        key={h.id}
-        onClick={() => {
-          setSelectedHobbyId(h.id);
-          setSelectedHobby(h);
-        }}
-        className={`px-3 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap border transition
-          ${
-            selectedHobbyId === h.id
-              ? "bg-slate-900 text-white border-slate-900"
-              : "bg-slate-50 text-slate-700 border-slate-200"
-          }
-        `}
-      >
-        <span>{h.icon}</span> {h.name}
-      </button>
-    ))
-  }
-</div>
+  <div className="h-full bg-white p-6 pt-12">
 
-                   <Button className="w-full mt-8" onClick={() => {
-                       const content = (document.getElementById('post-content') as HTMLTextAreaElement).value;
-                       const firstHobby = currentUser?.joinedHobbies[0];
-                       if (firstHobby) handleCreatePost(content, firstHobby);
-                       else showToast("Please join a community first!", "error");
-                   }}>Post Update (+20 XP)</Button>
-                </div>
-            )}
+    {/* HEADER */}
+    <div className="flex justify-between items-center mb-6">
+      <h2 className="text-xl font-bold">New Post</h2>
+      <button onClick={() => setView(ViewState.FEED)}>
+        <X className="w-6 h-6" />
+      </button>
+    </div>
+
+    {/* TEXT INPUT */}
+    <textarea
+      id="post-content"
+      className="w-full h-40 bg-slate-50 p-4 rounded-2xl resize-none outline-none text-sm"
+      placeholder="What did you achieve today?"
+    />
+
+    {/* COMMUNITY SELECT */}
+    <div className="mt-4">
+      <p className="text-xs font-bold text-slate-400 uppercase mb-2">
+        Select Community
+      </p>
+
+      <div className="flex gap-2 overflow-x-auto pb-2">
+
+        {hobbies
+          .filter(h => currentUser?.joinedHobbies.includes(h.id))
+          .map(h => (
+            <button
+              key={h.id}
+              onClick={() => {
+                setSelectedHobbyId(h.id);
+                setSelectedHobby(h);
+              }}
+              className={`px-4 py-2 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap border transition-all
+                ${
+                  selectedHobbyId === h.id
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-slate-50 text-slate-700 border-slate-200"
+                }
+              `}
+            >
+              <span>{h.icon}</span> {h.name}
+            </button>
+          ))}
+
+        {(!hobbies || hobbies.length === 0) && (
+          <p className="text-xs text-slate-400">Join a community first</p>
+        )}
+      </div>
+    </div>
+
+    {/* POST BUTTON */}
+    <Button
+      className="w-full mt-8"
+      onClick={() => {
+        const content = (document.getElementById("post-content") as HTMLTextAreaElement).value;
+
+        if (!content.trim()) {
+          showToast("Post cannot be empty", "error");
+          return;
+        }
+
+        if (!selectedHobbyId) {
+          showToast("Select a community", "error");
+          return;
+        }
+
+        handleCreatePost(content);
+      }}
+    >
+      Post Update (+20 XP)
+    </Button>
+
+  </div>
+)}
 
             {view === ViewState.COMMUNITY_DETAILS && selectedHobby && (
                 <div className="bg-white min-h-full">

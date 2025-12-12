@@ -850,25 +850,25 @@ return (
 
     {/* POST BUTTON */}
     <Button
-      className="w-full mt-8"
-      onClick={() => {
-        const content = (document.getElementById("post-content") as HTMLTextAreaElement).value;
+  className="w-full mt-8"
+  onClick={() => {
+    const content = (document.getElementById("post-content") as HTMLTextAreaElement).value;
 
-        if (!content.trim()) {
-          showToast("Post cannot be empty", "error");
-          return;
-        }
+    if (!content.trim()) {
+      showToast("Post cannot be empty", "error");
+      return;
+    }
 
-        if (!selectedHobbyId) {
-          showToast("Select a community", "error");
-          return;
-        }
+    if (!selectedHobbyId) {
+      showToast("Select a community", "error");
+      return;
+    }
 
-        handleCreatePost(content);
-      }}
-    >
-      Post Update (+20 XP)
-    </Button>
+    handleCreatePost(content, selectedHobbyId);  // ✅ FIXED
+  }}
+>
+  Post Update (+20 XP)
+</Button>
 
   </div>
 )}

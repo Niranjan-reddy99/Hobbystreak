@@ -986,66 +986,120 @@ export default function App() {
           )}
 
           {/* PROFILE */}
-          {view === ViewState.PROFILE && (
-            <div className="px-6 pt-4">
-              <div className="flex justify-between items-center mb-8">
-                <h1 className="text-xl font-bold">Profile</h1>
-                <button onClick={handleLogout} className="text-red-500"><LogOut className="w-5 h-5" /></button>
-              </div>
+{view === ViewState.PROFILE && (
+  <div className="px-6 pt-4">
+    
+    {/* Header */}
+    <div className="flex justify-between items-center mb-8">
+      <h1 className="text-xl font-bold">Profile</h1>
+      <button onClick={handleLogout} className="text-red-500">
+        <LogOut className="w-5 h-5" />
+      </button>
+    </div>
 
-              <div className="text-center mb-8">
-                <div className="relative w-24 h-24 mx-auto mb-4">
-                  <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">
-                    <img src={currentUser?.avatar} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="absolute -bottom-2 -right-2 bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-full border-4 border-slate-50">
-                    Lvl {Math.floor((currentUser?.stats.points || 0) / 100) + 1}
-                  </div>
-                </div>
-                <h2 className="text-xl font-bold">{currentUser?.name}</h2>
-                <p className="text-sm text-slate-400">{currentUser?.email}</p>
-              </div>
-              <Button 
-  variant="secondary" 
-  className="w-full mb-4"
-  onClick={() => {
-    setEditName(currentUser?.name || '');
-    setEditAvatar(currentUser?.avatar || '');
-    setView(ViewState.EDIT_PROFILE);
-  }}
->
-  Edit Profile
-</Button>
+    {/* Avatar + Name Section */}
+    <div className="text-center mb-8">
+      <div className="relative w-24 h-24 mx-auto mb-4">
+        <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">
+          <img src={currentUser?.avatar} className="w-full h-full object-cover" />
+        </div>
 
+        <div className="absolute -bottom-2 -right-2 bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-full border-4 border-slate-50">
+          Lvl {Math.floor((currentUser?.stats.points || 0) / 100) + 1}
+        </div>
+      </div>
 
-              <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 border border-slate-100">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-bold text-slate-400 uppercase">XP Progress</span>
-                  <span className="text-xs font-bold text-slate-900">{(currentUser?.stats.points || 0) % 100} / 100</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                  <div className="bg-indigo-500 h-full rounded-full transition-all duration-500" style={{ width: `${(currentUser?.stats.points || 0) % 100}%` }} />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-2 text-center">
-                  {100 - ((currentUser?.stats.points || 0) % 100)} XP to next level
-                </p>
-              </div>
+      <h2 className="text-xl font-bold">{currentUser?.name}</h2>
+      <p className="text-sm text-slate-400">{currentUser?.email}</p>
 
-              <h3 className="font-bold text-sm mb-4">My Hobbies</h3>
-              <div className="space-y-3">
-                {(hobbies.filter(h => (currentUser?.joinedHobbies || []).includes(h.id))).map(h => (
-                  <div key={h.id} className="bg-white p-4 rounded-2xl flex items-center gap-3 shadow-sm">
-                    <span className="text-2xl">{h.icon}</span>
-                    <div className="flex-1">
-                      <p className="font-bold text-sm">{h.name}</p>
-                      <p className="text-xs text-slate-400">{h.memberCount} members</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-300" />
-                  </div>
-                ))}
-              </div>
+      {/* EDIT PROFILE BUTTON — FIXED POSITION */}
+      <Button
+        variant="secondary"
+        className="w-full mt-4 mb-4"
+        onClick={() => {
+          setEditName(currentUser?.name || "");
+          setEditAvatar(currentUser?.avatar || "");
+          setView(ViewState.EDIT_PROFILE);
+        }}
+      >
+        Edit Profile
+      </Button>
+    </div>
+
+    {/* XP BAR */}
+    <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 border border-slate-100">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs font-bold text-slate-400 uppercase">
+          XP Progress
+        </span>
+        <span className="text-xs font-bold text-slate-900">
+          {(currentUser?.stats.points || 0) % 100} / 100
+        </span>
+      </div>
+
+      <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+        <div
+          className="bg-indigo-500 h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${
+              (currentUser?.stats.points || 0) % 100
+            }%`
+          }}
+        ></div>
+      </div>
+
+      <p className="text-[10px] text-slate-400 mt-2 text-center">
+        {100 - ((currentUser?.stats.points || 0) % 100)} XP to next level
+      </p>
+    </div>
+
+    {/* Stats */}
+    <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="bg-white p-4 rounded-3xl shadow-sm text-center">
+        <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-500 mx-auto mb-2">
+          <Flame className="w-5 h-5" />
+        </div>
+        <p className="text-2xl font-bold">{currentUser?.stats.totalStreak}</p>
+        <p className="text-[10px] uppercase font-bold text-slate-400">
+          Streak
+        </p>
+      </div>
+
+      <div className="bg-white p-4 rounded-3xl shadow-sm text-center">
+        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 mx-auto mb-2">
+          <Users className="w-5 h-5" />
+        </div>
+        <p className="text-2xl font-bold">
+          {currentUser?.joinedHobbies.length}
+        </p>
+        <p className="text-[10px] uppercase font-bold text-slate-400">
+          Hobbies
+        </p>
+      </div>
+    </div>
+
+    {/* Joined Hobbies */}
+    <h3 className="font-bold text-sm mb-4">My Communities</h3>
+    <div className="space-y-3">
+      {hobbies
+        .filter((h) => currentUser?.joinedHobbies.includes(h.id))
+        .map((h) => (
+          <div
+            key={h.id}
+            className="bg-white p-4 rounded-2xl flex items-center gap-3 shadow-sm"
+          >
+            <span className="text-2xl">{h.icon}</span>
+            <div className="flex-1">
+              <p className="font-bold text-sm">{h.name}</p>
+              <p className="text-xs text-slate-400">{h.memberCount} members</p>
             </div>
-          )}
+
+            <ChevronRight className="w-4 h-4 text-slate-300" />
+          </div>
+        ))}
+    </div>
+  </div>
+)}
 
           {/* SCHEDULE */}
           {view === ViewState.SCHEDULE && (

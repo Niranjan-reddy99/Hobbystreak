@@ -570,6 +570,31 @@ export default function App() {
     setSelectedHobby(hobby);
     setView(ViewState.COMMUNITY_DETAILS);
   };
+     // <-- function ends here
+
+  // ⬇️ INSERT REPORT COMMUNITY FUNCTION HERE
+  const handleReportCommunity = async (hobbyId: string) => {
+    if (!supabase || !currentUser) {
+      showToast("Login required", "error");
+      return;
+    }
+
+    const reason = prompt("Why are you reporting this community?");
+    if (!reason?.trim()) {
+      showToast("Report cancelled", "error");
+      return;
+    }
+
+    const { error } = await supabase.from("community_reports").insert({
+      hobby_id: hobbyId,
+      user_id: currentUser.id,
+      reason
+    });
+
+    if (error) showToast("Failed to report", "error");
+    else showToast("Report submitted");
+  };
+
 
   // -------------------------
   // POSTS + LIKES + COMMENTS
@@ -1038,6 +1063,13 @@ export default function App() {
                 >
                   {currentUser?.joinedHobbies.includes(selectedHobby.id) ? 'Leave Community' : 'Join Community'}
                 </Button>
+                <Button
+  className="w-full mb-4"
+  variant="danger"
+  onClick={() => handleReportCommunity(selectedHobby.id)}
+>
+  Report Community
+</Button>
 
                 <h3 className="font-bold text-sm mb-4">Community Posts</h3>
 

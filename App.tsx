@@ -400,95 +400,106 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
   // AUTH HANDLERS
   // -------------------------
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  e.preventDefault();
+  setIsLoading(true);
 
-    if (!supabase) {
-      showToast('Supabase not connected', 'error');
+  if (!supabase) {
+    showToast("Supabase not connected", "error");
+    setIsLoading(false);
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      showToast(error.message, "error");
       setIsLoading(false);
       return;
     }
 
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        showToast(error.message, 'error');
-        setIsLoading(false);
-        return;
-      }
-
-      const user = (data as any)?.user;
-      if (!user) {
-        showToast('Login failed', 'error');
-        setIsLoading(false);
-        return;
-      }
-
-      // fetch profile row if exists
-      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-
-      setCurrentUser({
-        id: user.id,
-        name: profileData?.name || user.user_metadata?.full_name || 'User',
-        email: user.email || '',
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-        joinedHobbies: [],
-        stats: profileData?.stats || { totalStreak: 0, points: 0 }
-      });
-
-      await fetchData(user.id);
-      await fetchHobbiesAndPosts(user.id);
-
-      setView(ViewState.FEED);
-      showToast('Welcome back!');
-    } catch (err: any) {
-      console.error('login error', err);
-      showToast('Login failed', 'error');
-    } finally {
+    const user = (data as any)?.user;
+    if (!user) {
+      showToast("Login failed", "error");
       setIsLoading(false);
+      return;
     }
-  };
+
+    // Fetch profile
+    let { data: profileData } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    // 🟩 FIX: if profile missing → create one now
+    if (!profileData) {
+      const newProfile = {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.full_name || "User",
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+        stats: { totalStreak: 0, points: 0 }
+      };
+
+      await supabase.from("profiles").insert(newProfile).single();
+      profileData = newProfile; // use newly created row
+    }
+
+    // Set app user
+    setCurrentUser({
+      id: user.id,
+      name: profileData.name,
+      email: profileData.email,
+      avatar: profileData.avatar,
+      joinedHobbies: [],
+      stats: profileData.stats || { totalStreak: 0, points: 0 }
+    });
+
+    await fetchData(user.id);
+    await fetchHobbiesAndPosts(user.id);
+
+    setView(ViewState.FEED);
+    showToast("Welcome back!");
+  } catch (err: any) {
+    console.error("login error", err);
+    showToast("Login failed", "error");
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const handleRegister = async () => {
-    if (!supabase) return;
-    setIsLoading(true);
+  if (!supabase) return;
+  setIsLoading(true);
 
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: name } }
-      });
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name } }
+    });
 
-      if (error) {
-        showToast(error.message, 'error');
-        setIsLoading(false);
-        return;
-      }
-
-      if (data?.user) {
-        // create profile row (best-effort)
-        await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            name,
-            email,
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-            stats: { points: 0, totalStreak: 0 }
-          })
-          .catch(() => {});
-      }
-
-      showToast('Account created! You can now log in.');
-      setView(ViewState.LOGIN);
-    } catch (err) {
-      console.error('register error', err);
-      showToast('Failed to register', 'error');
-    } finally {
+    if (error) {
+      showToast(error.message, 'error');
       setIsLoading(false);
+      return;
     }
-  };
+
+    showToast('Account created! You can now log in.');
+    setView(ViewState.LOGIN);
+
+  } catch (err) {
+    console.error('register error', err);
+    showToast('Failed to register', 'error');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleLogout = async () => {
     if (supabase) await supabase.auth.signOut();

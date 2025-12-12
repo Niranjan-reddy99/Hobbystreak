@@ -990,54 +990,102 @@ return (
     : "Join Community"}
 </Button>
 
-                       <h3 className="font-bold text-sm mb-4">Community Posts</h3>
-                       <div className="space-y-4">
-                           {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (
-                               <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                   <div className="flex items-center gap-2 mb-2"><img src={post.authorAvatar} className="w-6 h-6 rounded-full" /><span className="text-xs font-bold">{post.authorName}</span></div>
-                                   <p className="text-sm text-slate-700">{post.content}</p>
-                                   <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
-                                       <button onClick={() => handleLike(post)} className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}><Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`}/> {post.likes}</button>
-                                       <button onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)} className="flex items-center gap-1 hover:text-blue-500"><MessageCircle className="w-4 h-4"/> {post.comments.length}</button>
-                                   </div>
+                       {/* COMMUNITY POSTS SECTION */}
+<h3 className="font-bold text-sm mb-4">Community Posts</h3>
 
-                                   {expandedPostId === post.id && (
-                                       <div className="mt-4 pt-4 border-t border-slate-50">
-                                           <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
-                                               {post.comments.map(c => (
-                                                   <div key={c.id} className="text-xs bg-slate-50 p-2 rounded"><span className="font-bold">{c.authorName}:</span> {c.content}</div>
-                                               ))}
-                                               {post.comments.length === 0 && <p className="text-xs text-slate-300">No comments yet.</p>}
-                                           </div>
-                                           <div className="flex gap-2">
-                                               <input 
-                                                   id={`comm-comm-${post.id}`}
-                                                   className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none focus:ring-1 ring-slate-200"
-                                                   placeholder="Write a reply..."
-                                                   onKeyDown={(e) => {
-                                                       if (e.key === 'Enter') {
-                                                           const target = e.target as HTMLInputElement;
-                                                           handleComment(post.id, target.value);
-                                                           target.value = '';
-                                                       }
-                                                   }}
-                                               />
-                                               <button onClick={() => {
-                                                   const input = document.getElementById(`comm-comm-${post.id}`) as HTMLInputElement;
-                                                   if (input.value) { handleComment(post.id, input.value); input.value = ''; }
-                                               }} className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700"><Send className="w-3 h-3" /></button>
-                                           </div>
-                                       </div>
-                                   )}
-                               </div>
-                           ))}
-                           {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && (
-                               <p className="text-center text-sm text-slate-400 py-4">No posts yet. Be the first!</p>
-                           )}
-                       </div>
-                   </div>
-                </div>
-            )}
+{!currentUser?.joinedHobbies.includes(selectedHobby.id) ? (
+    // 🔒 User not in community → no feed access
+    <div className="text-center text-slate-400 text-sm py-6 border rounded-2xl bg-slate-50">
+        Join this community to see member posts.
+    </div>
+) : (
+    // ✅ User is member → show posts
+    <div className="space-y-4">
+        {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (
+            <div key={post.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                
+                {/* Author */}
+                <div className="flex items-center gap-2 mb-2">
+                    <img src={post.authorAvatar} className="w-6 h-6 rounded-full" />
+                    <span className="text-xs font-bold">{post.authorName}</span>
+                </div>
+
+                {/* Content */}
+                <p className="text-sm text-slate-700">{post.content}</p>
+
+                {/* Like + Comment */}
+                <div className="flex gap-4 text-slate-400 text-xs border-t pt-3 mt-3">
+                    <button 
+                        onClick={() => handleLike(post)}
+                        className={`flex items-center gap-1 transition-colors ${post.isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
+                    >
+                        <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current' : ''}`} />
+                        {post.likes}
+                    </button>
+
+                    <button
+                        onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
+                        className="flex items-center gap-1 hover:text-blue-500"
+                    >
+                        <MessageCircle className="w-4 h-4" />
+                        {post.comments.length}
+                    </button>
+                </div>
+
+                {/* Comments Section */}
+                {expandedPostId === post.id && (
+                    <div className="mt-4 pt-4 border-t border-slate-50">
+                        <div className="space-y-2 mb-4 max-h-40 overflow-y-auto">
+                            {post.comments.map(c => (
+                                <div key={c.id} className="text-xs bg-slate-50 p-2 rounded">
+                                    <span className="font-bold">{c.authorName}: </span>
+                                    {c.content}
+                                </div>
+                            ))}
+                            {post.comments.length === 0 && (
+                                <p className="text-xs text-slate-300">No comments yet.</p>
+                            )}
+                        </div>
+
+                        <div className="flex gap-2">
+                            <input
+                                id={`comm-comm-${post.id}`}
+                                className="flex-1 bg-slate-100 rounded px-3 py-2 text-xs outline-none focus:ring-1 ring-slate-200"
+                                placeholder="Write a reply..."
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        const input = e.target as HTMLInputElement;
+                                        if (input.value) {
+                                            handleComment(post.id, input.value);
+                                            input.value = '';
+                                        }
+                                    }
+                                }}
+                            />
+                            <button
+                                onClick={() => {
+                                    const input = document.getElementById(`comm-comm-${post.id}`) as HTMLInputElement;
+                                    if (input?.value) {
+                                        handleComment(post.id, input.value);
+                                        input.value = '';
+                                    }
+                                }}
+                                className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700"
+                            >
+                                <Send className="w-3 h-3" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        ))}
+
+        {posts.filter(p => p.hobbyId === selectedHobby.id).length === 0 && (
+            <p className="text-center text-sm text-slate-400 py-4">No posts yet. Be the first!</p>
+        )}
+    </div>
+)}
+
 
             {view === ViewState.PROFILE && (
                 <div className="px-6 pt-4">

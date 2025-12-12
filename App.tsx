@@ -559,7 +559,18 @@ export default function App() {
   };
 
   // --- RENDER HELPERS ---
-  
+ return (
+  <div className="min-h-screen ...">
+
+    {/* PHONE FRAME */}
+    <div className="w-full max-w-[400px] ...">
+
+      {toast && <Toast />}
+      {showConfetti && <Confetti />}
+
+     
+
+
 
         {/* CONTENT AREA */}
         <div className="flex-1 overflow-y-auto no-scrollbar pb-24">

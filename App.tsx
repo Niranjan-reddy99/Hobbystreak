@@ -1,7 +1,7 @@
 // App.tsx — CLEANED, persistent session (Option 1)
-import "./App.css";
-import React, { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";  // <<--- CORRECT CLIENT SOURCE
+import './App.css';
+import React, { useState, useEffect } from 'react';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   Home,
   Compass,
@@ -23,12 +23,7 @@ import {
   Circle,
   Trash2,
   Send
-} from "lucide-react";
-
-// ==========================================
-// TYPES
-// ==========================================
-
+} from 'lucide-react';
 
 // ==========================================
 // CONFIG
@@ -36,28 +31,18 @@ import {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// In-memory storage (safe for Vercel, iOS, Chrome iframe)
-const memoryStorage = {
-  data: {} as Record<string, string>,
+// Use default persistent browser storage (localStorage) by NOT overriding auth.storage.
+// If you previously set a custom memory storage, remove it.
+const supabase: SupabaseClient | null = (supabaseUrl && supabaseKey)
+  ? createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false
+      }
+    })
+  : null;
 
-  getItem(key: string) {
-    return this.data[key] || null;
-  },
-  setItem(key: string, value: string) {
-    this.data[key] = value;
-  },
-  removeItem(key: string) {
-    delete this.data[key];
-  }
-};
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: memoryStorage,    // ⭐ FIX
-    persistSession: true,      // works with memory storage
-    autoRefreshToken: true,
-  },
-});
 // ==========================================
 // TYPES
 // ==========================================

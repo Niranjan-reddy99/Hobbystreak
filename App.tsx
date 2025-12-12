@@ -559,21 +559,21 @@ export default function App() {
   };
 
   // --- RENDER HELPERS ---
- return (
-  <div className="min-h-screen ...">
+return (
+  <div className="min-h-screen bg-neutral-900 flex items-center justify-center font-sans p-0 sm:p-8">
 
     {/* PHONE FRAME */}
-    <div className="w-full max-w-[400px] ...">
+    <div className="w-full max-w-[400px] h-[100dvh] sm:h-[850px] bg-slate-50 
+        sm:rounded-[40px] shadow-2xl overflow-hidden relative flex flex-col 
+        border-0 sm:border-[8px] border-neutral-800 ring-1 ring-white/10">
 
-      {toast && <Toast />}
+      {/* Toast + Confetti */}
+      {toast && <Toast message={toast.message} type={toast.type} />}
       {showConfetti && <Confetti />}
 
-     
+      {/* CONTENT AREA */}
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
 
-
-
-        {/* CONTENT AREA */}
-        <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
             
             {view === ViewState.LOGIN && (
                 <div className="h-full flex flex-col justify-center px-8">

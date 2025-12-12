@@ -218,63 +218,78 @@ export default function App() {
 
   // FETCH HOBBIES & POSTS (now includes likes + comments awareness)
   const fetchHobbiesAndPosts = async (currentUserId?: string | null) => {
-     if (!supabase) return;
-     
-     // 1. Fetch Hobbies
-     const { data: hobbiesData } = await supabase.from('hobbies').select('*');
-     if (hobbiesData) {
-         const formattedHobbies = hobbiesData.map((h: any) => ({
-             ...h,
-             memberCount: h.member_count || 0,
-             image: h.image_url || 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=600&q=80',
-             icon: h.icon || '✨'
-         }));
-         setHobbies(formattedHobbies);
-     }
+    if (!supabase) return;
 
-     // 2. Fetch Posts
-     const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-     // 3. Fetch all comments (simple)
-     const { data: commentsData } = await supabase.from('comments').select('*');
-     // 4. Fetch likes for current user
-     let myLikedPostIds: string[] = [];
-     if (currentUserId) {
-       const { data: likes } = await supabase.from('post_likes').select('post_id').eq('user_id', currentUserId);
-       if (likes) myLikedPostIds = likes.map((l: any) => l.post_id);
-     }
+    // 1. Fetch Hobbies
+    const { data: hobbiesData } = await supabase.from('hobbies').select('*');
+    if (hobbiesData) {
+        const formattedHobbies = hobbiesData.map((h: any) => ({
+            ...h,
+            memberCount: h.member_count || 0,
+            image: h.image_url || 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=600&q=80',
+            icon: h.icon || '✨'
+        }));
+        setHobbies(formattedHobbies);
+    }
 
-     if (postsData) {
-    // fetch ALL profiles once (fastest way)
-    const { data: profiles } = await supabase.from('profiles').select('id, name');
+    // 2. Fetch Posts
+    const { data: postsData } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    const getName = (uid: string) => {
-        return profiles?.find((p: any) => p.id === uid)?.name || 'User';
-    };
+    // 3. Fetch Comments
+    const { data: commentsData } = await supabase
+        .from('comments')
+        .select('*');
 
-    const formattedPosts = postsData.map((p: any) => ({
-        id: p.id,
-        userId: p.user_id,
-        hobbyId: p.hobby_id,
-        content: p.content,
-        likes: p.likes || 0,
+    // 4. Fetch likes for current user
+    let myLikedPostIds: string[] = [];
+    if (currentUserId) {
+        const { data: likes } = await supabase
+            .from('post_likes')
+            .select('post_id')
+            .eq('user_id', currentUserId);
 
-        comments: (commentsData?.filter((c:any) => c.post_id === p.id) || [])
-            .map((c:any) => ({
-                id: c.id,
-                userId: c.user_id,
-                content: c.content,
-                authorName: getName(c.user_id)  // 🔥 real commenter name
-            })),
+        if (likes) myLikedPostIds = likes.map((l: any) => l.post_id);
+    }
 
-        isLiked: myLikedPostIds.includes(p.id),
+    // 5. Fetch all profile names once
+    const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, name');
 
-        authorName: getName(p.user_id),  // 🔥 real post author name
-        authorAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.user_id}`,
-        timestamp: new Date(p.created_at).toLocaleDateString()
-    }));
+    const getName = (uid: string) =>
+        profiles?.find((p: any) => p.id === uid)?.name || "User";
 
-    setPosts(formattedPosts);
-}
+    // 6. Format posts
+    if (postsData) {
+        const formattedPosts = postsData.map((p: any) => ({
+            id: p.id,
+            userId: p.user_id,
+            hobbyId: p.hobby_id,
+            content: p.content,
+            likes: p.likes || 0,
+
+            comments: (commentsData?.filter((c: any) => c.post_id === p.id) || [])
+                .map((c: any) => ({
+                    id: c.id,
+                    userId: c.user_id,
+                    content: c.content,
+                    authorName: getName(c.user_id)
+                })),
+
+            isLiked: myLikedPostIds.includes(p.id),
+
+            authorName: getName(p.user_id),
+            authorAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.user_id}`,
+            timestamp: new Date(p.created_at).toLocaleDateString()
+        }));
+
+        setPosts(formattedPosts);
+    }
+};
+
 
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {

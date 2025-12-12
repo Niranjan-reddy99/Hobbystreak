@@ -502,75 +502,52 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
   // -------------------------
   // HOBBY & COMMUNITY HANDLERS
   // -------------------------
-  const handleCreateHobby = async (nameStr: string, description: string, category: HobbyCategory) => {
-    if (!supabase || !currentUser) return;
-    setIsLoading(true);
-  const handleCreateHobby = async (name: string, description: string, category: HobbyCategory) => {
+  const handleCreateHobby = async (
+  name: string,
+  description: string,
+  category: HobbyCategory
+) => {
   if (!supabase || !currentUser) return;
   setIsLoading(true);
 
   try {
-    // Insert new hobby
+    // Insert hobby
     const { data, error } = await supabase
-      .from('hobbies')
+      .from("hobbies")
       .insert({
         name,
         description,
         category,
-        icon: '🌟',
-        member_count: 1
+        icon: getAutoIcon(name, category),
+        member_count: 1,
+        image_url:
+          "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?q=80&w=800"
       })
       .select()
       .single();
 
-    if (error) throw error;   // FORCE catch if any error
+    if (error) throw error;
 
-    // Join user into hobby
+    // Join user to hobby
     await supabase.from("user_hobbies").insert({
       user_id: currentUser.id,
       hobby_id: data.id
     });
 
-    try {
-      const { data, error } = await supabase
-        .from('hobbies')
-        .insert({
-          name: nameStr,
-          description,
-          category,
-          icon: getAutoIcon(nameStr, category),
-          member_count: 1
-        })
-        .select()
-        .single();
-    showToast("Community Created!");
+    showToast("Community Created! 🎉");
+
     await fetchHobbiesAndPosts(currentUser.id);
     await fetchData(currentUser.id);
-    setView(ViewState.EXPLORE);
 
-      if (error) {
-        showToast('Failed to create', 'error');
-      } else if (data) {
-        await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id }).catch(() => {});
-        await fetchHobbiesAndPosts(currentUser.id);
-        await fetchData(currentUser.id);
-        setView(ViewState.EXPLORE);
-        showToast('Community Created!');
-      }
-    } catch (e) {
-      console.error('create hobby error', e);
-      showToast('Failed to create', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    setView(ViewState.EXPLORE);
   } catch (err: any) {
     console.log("Create hobby error:", err.message);
     showToast("Something went wrong. Try again.", "error");
+  } finally {
+    setIsLoading(false);
   }
-
-  setIsLoading(false);
 };
+
 
   const handleJoinCommunity = async (e: React.MouseEvent | null, hobbyId: string) => {
     if (e) e.stopPropagation();

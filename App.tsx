@@ -46,18 +46,20 @@ const supabase: SupabaseClient | null = (supabaseUrl && supabaseKey)
 // ==========================================
 // TYPES
 // ==========================================
-enum ViewState {
-  LOGIN,
-  REGISTER,
-  ONBOARDING,
-  FEED,
-  EXPLORE,
-  PROFILE,
-  SCHEDULE,
-  CREATE_HOBBY,
-  CREATE_POST,
-  COMMUNITY_DETAILS
+enum ViewState { 
+  LOGIN, 
+  REGISTER, 
+  ONBOARDING, 
+  FEED, 
+  EXPLORE, 
+  PROFILE, 
+  SCHEDULE, 
+  CREATE_HOBBY, 
+  CREATE_POST, 
+  COMMUNITY_DETAILS,
+  NOTIFICATIONS   // <-- ADD THIS
 }
+
 
 enum HobbyCategory {
   ALL = 'All',
@@ -187,12 +189,16 @@ export default function App() {
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedHobbyId, setSelectedHobbyId] = useState<string | null>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory | string>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+ 
+
 
   // UI
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -201,6 +207,9 @@ export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true);
 
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
 
   // -------------------------
   // Initialization
@@ -226,6 +235,7 @@ export default function App() {
             joinedHobbies: [],
             stats: { totalStreak: 0, points: 0 }
           });
+
 
           await fetchData(session.user.id);
           await fetchHobbiesAndPosts(session.user.id);
@@ -290,6 +300,16 @@ export default function App() {
       const joinedIds = Array.isArray(joinedData) ? joinedData.map((d: any) => d.hobby_id) : [];
 
       setCurrentUser(prev => (prev ? { ...prev, joinedHobbies: joinedIds } : null));
+      // Fetch notifications
+const { data: notifData } = await supabase
+  .from("notifications")
+  .select("*")
+  .eq("user_id", userId)
+  .order("created_at", { ascending: false });
+
+setNotifications(notifData || []);
+setUnreadCount((notifData || []).filter(n => !n.is_read).length);
+
 
       const { data: tasksData } = await supabase.from('tasks').select('*').eq('user_id', userId);
       if (tasksData) setTasks(tasksData);
@@ -799,7 +819,17 @@ export default function App() {
             <div className="px-6 pt-4">
               <div className="flex justify-between items-center mb-6">
                 <h1 className="text-xl font-bold">Home</h1>
-                <button className="p-2 bg-white rounded-full shadow-sm"><Bell className="w-5 h-5" /></button>
+                <button 
+  className="p-2 bg-white rounded-full shadow-sm relative"
+  onClick={() => setView(ViewState.NOTIFICATIONS)}
+>
+  <Bell className="w-5 h-5" />
+
+  {unreadCount > 0 && (
+    <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+  )}
+</button>
+
               </div>
 
               {/* User Stats Summary */}
@@ -1146,6 +1176,35 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {view === ViewState.NOTIFICATIONS && (
+  <div className="px-6 pt-4">
+    <div className="flex justify-between items-center mb-6">
+      <h1 className="text-xl font-bold">Notifications</h1>
+      <button onClick={() => setView(ViewState.FEED)}>
+        <ArrowLeft className="w-6 h-6" />
+      </button>
+    </div>
+
+    {notifications.length === 0 && (
+      <p className="text-center text-slate-400 mt-10">
+        No notifications yet.
+      </p>
+    )}
+
+    <div className="space-y-3">
+      {notifications.map((n) => (
+        <div key={n.id} className="bg-white p-4 rounded-2xl shadow-sm border">
+          <p className="font-bold text-sm">{n.title}</p>
+          <p className="text-xs text-slate-500">{n.body}</p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            {new Date(n.created_at).toLocaleString()}
+          </p>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
           {/* PROFILE */}
           {view === ViewState.PROFILE && (

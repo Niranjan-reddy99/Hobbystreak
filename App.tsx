@@ -486,6 +486,41 @@ const getAutoIcon = (hobbyName: string, category?: string): string => {
       showToast("Error joining", 'error');
     }
   };
+  const handleLeaveCommunity = async (hobbyId: string) => {
+  if (!supabase || !currentUser) return showToast("Login required");
+
+  // If not a member, nothing to do
+  if (!currentUser.joinedHobbies.includes(hobbyId)) {
+    return showToast("You are not a member of this community");
+  }
+
+  // Remove from user_hobbies
+  const { error } = await supabase
+    .from("user_hobbies")
+    .delete()
+    .match({ user_id: currentUser.id, hobby_id: hobbyId });
+
+  if (error) return showToast("Failed to leave", "error");
+
+  // Reduce member count
+  const h = hobbies.find(h => h.id === hobbyId);
+  await supabase
+    .from("hobbies")
+    .update({ member_count: Math.max(0, (h?.memberCount || 1) - 1) })
+    .eq("id", hobbyId);
+
+  // Update state
+  setCurrentUser(prev =>
+    prev
+      ? { ...prev, joinedHobbies: prev.joinedHobbies.filter(id => id !== hobbyId) }
+      : null
+  );
+
+  await fetchHobbiesAndPosts(currentUser.id);
+
+  showToast("Community left");
+};
+
 
   const handleViewCommunity = (hobby: Hobby) => {
       setSelectedHobby(hobby);
@@ -935,9 +970,26 @@ return (
                    </div>
                    <div className="p-6">
                        <p className="text-sm text-slate-600 mb-6 leading-relaxed">{selectedHobby.description}</p>
-                       <Button className="w-full mb-8" onClick={(e: React.MouseEvent) => handleJoinCommunity(e, selectedHobby.id)} variant={currentUser?.joinedHobbies.includes(selectedHobby.id) ? 'secondary' : 'primary'}>
-                           {currentUser?.joinedHobbies.includes(selectedHobby.id) ? 'Already Joined' : 'Join Community'}
-                       </Button>
+                       <Button
+  className="w-full mb-8"
+  onClick={(e: React.MouseEvent) => {
+    if (currentUser?.joinedHobbies.includes(selectedHobby.id)) {
+      handleLeaveCommunity(selectedHobby.id); // leave community
+    } else {
+      handleJoinCommunity(e, selectedHobby.id); // join community
+    }
+  }}
+  variant={
+    currentUser?.joinedHobbies.includes(selectedHobby.id)
+      ? "danger"
+      : "primary"
+  }
+>
+  {currentUser?.joinedHobbies.includes(selectedHobby.id)
+    ? "Leave Community"
+    : "Join Community"}
+</Button>
+
                        <h3 className="font-bold text-sm mb-4">Community Posts</h3>
                        <div className="space-y-4">
                            {posts.filter(p => p.hobbyId === selectedHobby.id).map(post => (

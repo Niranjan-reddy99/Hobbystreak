@@ -1,4 +1,3 @@
-// App.tsx — CLEANED, persistent session (Option 1)
 import './App.css';
 import React, { useState, useEffect } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -189,14 +188,14 @@ export default function App() {
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  
+
 
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedHobbyId, setSelectedHobbyId] = useState<string | null>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory | string>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
- 
+
 
 
   // UI
@@ -503,59 +502,75 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
   // -------------------------
   // HOBBY & COMMUNITY HANDLERS
   // -------------------------
-  const handleCreateHobby = async (
-  name: string,
-  description: string,
-  category: HobbyCategory
-) => {
+  const handleCreateHobby = async (nameStr: string, description: string, category: HobbyCategory) => {
+    if (!supabase || !currentUser) return;
+    setIsLoading(true);
+  const handleCreateHobby = async (name: string, description: string, category: HobbyCategory) => {
   if (!supabase || !currentUser) return;
   setIsLoading(true);
 
   try {
-    const icon = getAutoIcon(name, category);
-
+    // Insert new hobby
     const { data, error } = await supabase
-      .from("hobbies")
+      .from('hobbies')
       .insert({
         name,
         description,
         category,
-        icon,
-        image_url:
-          "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?q=80&w=800",
-        member_count: 1,
+        icon: '🌟',
+        member_count: 1
       })
       .select()
       .single();
 
-    if (error || !data) {
-      showToast("Failed to create community", "error");
-      setIsLoading(false);
-      return;
-    }
+    if (error) throw error;   // FORCE catch if any error
 
-    // Auto join creator
+    // Join user into hobby
     await supabase.from("user_hobbies").insert({
       user_id: currentUser.id,
-      hobby_id: data.id,
+      hobby_id: data.id
     });
 
-    // Refresh data
+    try {
+      const { data, error } = await supabase
+        .from('hobbies')
+        .insert({
+          name: nameStr,
+          description,
+          category,
+          icon: getAutoIcon(nameStr, category),
+          member_count: 1
+        })
+        .select()
+        .single();
+    showToast("Community Created!");
     await fetchHobbiesAndPosts(currentUser.id);
     await fetchData(currentUser.id);
-
-    showToast("Community Created! 🎉");
     setView(ViewState.EXPLORE);
-  } catch (e) {
-    showToast("Error creating community", "error");
+
+      if (error) {
+        showToast('Failed to create', 'error');
+      } else if (data) {
+        await supabase.from('user_hobbies').insert({ user_id: currentUser.id, hobby_id: data.id }).catch(() => {});
+        await fetchHobbiesAndPosts(currentUser.id);
+        await fetchData(currentUser.id);
+        setView(ViewState.EXPLORE);
+        showToast('Community Created!');
+      }
+    } catch (e) {
+      console.error('create hobby error', e);
+      showToast('Failed to create', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  } catch (err: any) {
+    console.log("Create hobby error:", err.message);
+    showToast("Something went wrong. Try again.", "error");
   }
 
   setIsLoading(false);
 };
-
-
-
-    
 
   const handleJoinCommunity = async (e: React.MouseEvent | null, hobbyId: string) => {
     if (e) e.stopPropagation();
@@ -1025,6 +1040,13 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
                   </select>
                 </div>
 
+                <Button className="w-full mt-4" onClick={() => {
+                  const name = (document.getElementById('hobby-name') as HTMLInputElement).value;
+                  const desc = (document.getElementById('hobby-desc') as HTMLTextAreaElement).value;
+                  const cat = (document.getElementById('hobby-cat') as HTMLSelectElement).value as HobbyCategory;
+                  if (name && desc) handleCreateHobby(name, desc, cat);
+                  else showToast('Please fill all fields', 'error');
+                }}>Create Community</Button>
                 <Button
   className="w-full mt-4"
   onClick={() => {

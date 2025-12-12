@@ -305,60 +305,53 @@ export default function App() {
   // --- HANDLERS ---
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    
-    if (!supabase) {
-        showToast("Supabase not connected", "error");
-        setIsLoading(false);
-        return;
-    }
+  e.preventDefault();
+  setIsLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    
-    if (error) {
-        showToast(error.message, 'error');
-    } else if (data.session) {
-        // Upsert Profile Logic (Fix for missing profiles)
-        // 1️⃣ Check if profile exists
-const { data: existingProfile } = await supabase
-  .from('profiles')
-  .select('*')
-  .eq('id', data.session.user.id)
-  .single();
+  if (!supabase) {
+    showToast("Supabase not connected", "error");
+    setIsLoading(false);
+    return;
+  }
 
-// 2️⃣ Extract real name from auth metadata
-const realName =
-  data.session.user.user_metadata?.full_name ||
-  existingProfile?.name ||
-  "User";
-
-// 3️⃣ If profile missing → create new one using REAL name
-if (!existingProfile) {
-  await supabase.from('profiles').insert({
-    id: data.session.user.id,
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
-    name: realName,
-    stats: { points: 0, totalStreak: 0 }
+    password,
   });
-}
 
+  if (error) {
+    showToast(error.message, "error");
+    setIsLoading(false);
+    return;
+  }
 
-        setCurrentUser({
-           id: data.session.user.id,
-           name: 'User',
-           email: email,
-           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.session.user.id}`,
-           joinedHobbies: [],
-           stats: { totalStreak: 0, points: 0 }
-        });
-        await fetchData(data.session.user.id);
-        await fetchHobbiesAndPosts(data.session.user.id);
-        setView(ViewState.FEED);
-        showToast("Welcome back!");
-    }
-    setIsLoading(false);
-  };
+  const user = data.user;
+
+  // 1️⃣ Fetch profile (REAL NAME)
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  // 2️⃣ Update local state with CORRECT NAME
+  setCurrentUser({
+    id: user.id,
+    name: profile?.name || "User",
+    email: user.email ?? "",
+    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+    joinedHobbies: [],
+    stats: profile?.stats || { totalStreak: 0, points: 0 },
+  });
+
+  await fetchData(user.id);
+  await fetchHobbiesAndPosts(user.id);
+
+  setView(ViewState.FEED);
+  showToast("Welcome back!");
+  setIsLoading(false);
+};
+
 
   const handleRegister = async () => {
       if (!supabase) return;

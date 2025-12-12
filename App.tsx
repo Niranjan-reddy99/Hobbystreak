@@ -189,8 +189,7 @@ export default function App() {
   const [hobbies, setHobbies] = useState<Hobby[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  
 
   const [selectedHobby, setSelectedHobby] = useState<Hobby | null>(null);
   const [selectedHobbyId, setSelectedHobbyId] = useState<string | null>(null);

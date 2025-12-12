@@ -554,18 +554,8 @@ setUnreadCount((notifData || []).filter(n => !n.is_read).length);
 };
 
 
-    showToast("Community Created!");
-    await fetchHobbiesAndPosts(currentUser.id);
-    await fetchData(currentUser.id);
-    setView(ViewState.EXPLORE);
 
-  } catch (err: any) {
-    console.log("Create hobby error:", err.message);
-    showToast("Something went wrong. Try again.", "error");
-  }
-
-  setIsLoading(false);
-};
+    
 
   const handleJoinCommunity = async (e: React.MouseEvent | null, hobbyId: string) => {
     if (e) e.stopPropagation();

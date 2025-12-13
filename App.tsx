@@ -601,7 +601,7 @@ export default function App() {
         {toast && <Toast message={toast.message} type={toast.type} />}
         {showConfetti && <Confetti />}
 
-        <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+        <div className="flex-1 relative z-10 overflow-y-auto no-scrollbar pb-24">
 
           {/* LOGIN */}
           {view === ViewState.LOGIN && (

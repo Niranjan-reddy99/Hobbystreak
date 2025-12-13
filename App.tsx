@@ -581,6 +581,15 @@ export default function App() {
     return days;
   };
 
+  const showBottomNav = ![
+  ViewState.LOGIN,
+  ViewState.REGISTER,
+  ViewState.ONBOARDING,
+  ViewState.COMMUNITY_DETAILS,
+  ViewState.EDIT_PROFILE
+].includes(view);
+
+
   // ==========================================
   // RENDER
   // ==========================================
@@ -997,7 +1006,7 @@ export default function App() {
 
           {/* EDIT PROFILE */}
           {view === ViewState.EDIT_PROFILE && (
-            <div className="h-full bg-white p-6 pt-12">
+            <div className="absolute inset-0 z-50 bg-white p-6 pt-12">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold">Edit Profile</h2>
                 <button onClick={() => setView(ViewState.PROFILE)}><X className="w-6 h-6" /></button>
@@ -1113,8 +1122,14 @@ export default function App() {
         </div>
 
         {/* BOTTOM NAVIGATION */}
-        {![ViewState.LOGIN, ViewState.REGISTER, ViewState.ONBOARDING, ViewState.COMMUNITY_DETAILS, ViewState.EDIT_PROFILE].includes(view) && (
-          <div className="absolute bottom-6 left-6 right-6">
+        <div
+  className={`absolute bottom-6 left-6 right-6 transition-opacity ${
+    showBottomNav
+      ? 'opacity-100 pointer-events-auto'
+      : 'opacity-0 pointer-events-none'
+  }`}
+>
+
             <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
               <button onClick={() => setView(ViewState.FEED)} className={view === ViewState.FEED ? 'text-slate-900' : 'text-slate-300'} aria-label="Feed"><Home className="w-6 h-6" /></button>
               <button onClick={() => setView(ViewState.EXPLORE)} className={view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-300'} aria-label="Explore"><Compass className="w-6 h-6" /></button>

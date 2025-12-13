@@ -159,6 +159,14 @@ export default function App() {
   // notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const [selectedDate, setSelectedDate] = useState<string>(
+  new Date().toISOString().split('T')[0]
+);
+  const [currentMonth, setCurrentMonth] = useState<Date>(
+  new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+);
+
   
 
 
@@ -595,16 +603,28 @@ export default function App() {
   };
 
   // ---------- UTIL -----------
-  const getWeekDays = () => {
-    const days: Date[] = [];
-    const today = new Date();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      days.push(d);
-    }
-    return days;
-  };
+  const getMonthDays = (monthDate: Date) => {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+
+  const days: Date[] = [];
+
+  // pad empty days before month starts
+  for (let i = firstDay.getDay(); i > 0; i--) {
+    days.push(new Date(year, month, 1 - i));
+  }
+
+  // actual days of month
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    days.push(new Date(year, month, d));
+  }
+
+  return days;
+};
+
 
   // ---------- RENDER ----------
   return (
@@ -1015,6 +1035,83 @@ export default function App() {
           {view === ViewState.SCHEDULE && (
             <div className="px-6 pt-4 h-full flex flex-col">
               <h1 className="text-xl font-bold mb-6">Schedule</h1>
+              <div className="flex justify-between items-center mb-6">
+  <button
+    onClick={() =>
+      setCurrentMonth(
+        new Date(
+          currentMonth.getFullYear(),
+          currentMonth.getMonth() - 1,
+          1
+        )
+      )
+    }
+    className="p-2 rounded-full hover:bg-slate-100"
+  >
+    ←
+  </button>
+
+  <h2 className="font-bold text-lg">
+    {currentMonth.toLocaleString("default", {
+      month: "long",
+      year: "numeric",
+    })}
+  </h2>
+
+  <button
+    onClick={() =>
+      setCurrentMonth(
+        new Date(
+          currentMonth.getFullYear(),
+          currentMonth.getMonth() + 1,
+          1
+        )
+      )
+    }
+    className="p-2 rounded-full hover:bg-slate-100"
+  >
+    →
+  </button>
+</div>
+<div className="grid grid-cols-7 gap-2 mb-8">
+  {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(day => (
+    <div
+      key={day}
+      className="text-center text-xs font-bold text-slate-400"
+    >
+      {day}
+    </div>
+  ))}
+
+  {getMonthDays(currentMonth).map((date, idx) => {
+    const dateStr = date.toISOString().split("T")[0];
+    const isSelected = dateStr === selectedDate;
+    const isToday = dateStr === new Date().toISOString().split("T")[0];
+    const hasTasks = tasks.some(t => t.date === dateStr);
+
+    return (
+      <button
+        key={idx}
+        onClick={() => setSelectedDate(dateStr)}
+        className={`h-12 rounded-xl flex flex-col items-center justify-center text-sm transition-all
+          ${isSelected ? "bg-slate-900 text-white shadow-md" : "bg-white border"}
+          ${date.getMonth() !== currentMonth.getMonth() ? "opacity-30" : ""}
+        `}
+      >
+        <span className="font-bold">{date.getDate()}</span>
+
+        {hasTasks && (
+          <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full mt-1" />
+        )}
+
+        {isToday && !isSelected && (
+          <span className="w-1.5 h-1.5 bg-red-500 rounded-full mt-1" />
+        )}
+      </button>
+    );
+  })}
+</div>
+
 
               <div className="flex justify-between mb-8 overflow-x-auto no-scrollbar pb-2">
                 {getWeekDays().map((date, index) => {

@@ -1121,7 +1121,7 @@ export default function App() {
 
         </div>
 
-                {/* BOTTOM NAVIGATION */}
+                        {/* BOTTOM NAVIGATION */}
         <div
           className={`absolute bottom-6 left-6 right-6 transition-opacity ${
             showBottomNav
@@ -1151,7 +1151,8 @@ export default function App() {
           </div>
         </div>
 
-      </div>   {/* CLOSE phone container */}
-    </div>     {/* CLOSE min-h-screen */}
+      </div>
+    </div>
   );
 }
+

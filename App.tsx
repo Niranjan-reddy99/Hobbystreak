@@ -160,9 +160,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  const [selectedDate, setSelectedDate] = useState<string>(
-  new Date().toISOString().split('T')[0]
-);
+
   const [currentMonth, setCurrentMonth] = useState<Date>(
   new Date(new Date().getFullYear(), new Date().getMonth(), 1)
 );

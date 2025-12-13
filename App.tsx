@@ -572,23 +572,52 @@ export default function App() {
   };
 
   const handleComment = async (postId: string, content: string) => {
-    if (!currentUser) return showToast('Login to comment', 'error');
-    if (!content.trim()) return;
-    const newComment = { id: `temp-${Date.now()}`, userId: currentUser.id, content, authorName: currentUser.name };
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, comments: [...p.comments, newComment] } : p));
-    try {
-      const { error } = await supabase.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
-      if (error) {
-  console.error("COMMENT ERROR 👉", error);
-  showToast(error.message, 'error');
-  return;
-}
+  if (!currentUser) {
+    showToast('Login to comment', 'error');
+    return;
+  }
 
-    } catch (err) {
-      console.error('comment error', err);
-      await fetchHobbiesAndPosts(currentUser.id);
-    }
+  if (!content.trim()) return;
+
+  // optimistic UI
+  const tempComment = {
+    id: `temp-${Date.now()}`,
+    userId: currentUser.id,
+    content,
+    authorName: currentUser.name
   };
+
+  setPosts(prev =>
+    prev.map(p =>
+      p.id === postId
+        ? { ...p, comments: [...p.comments, tempComment] }
+        : p
+    )
+  );
+
+  try {
+    const { error } = await supabase
+      .from('comments')
+      .insert({
+        post_id: postId,
+        content
+      });
+
+    if (error) {
+      console.error('❌ COMMENT INSERT ERROR:', error);
+      showToast(error.message, 'error');
+
+      // rollback optimistic comment
+      await fetchHobbiesAndPosts(currentUser.id);
+      return;
+    }
+
+  } catch (err) {
+    console.error('❌ COMMENT CATCH ERROR:', err);
+    await fetchHobbiesAndPosts(currentUser.id);
+  }
+};
+
 
   // ---------- NOTIFICATIONS ----------
   const markNotificationsRead = async () => {

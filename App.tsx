@@ -951,7 +951,7 @@ export default function App() {
                 </div>
                 <h2 className="text-xl font-bold">{currentUser?.name}</h2>
                 <p className="text-sm text-slate-400">{currentUser?.email}</p>
-                <Button variant="secondary" className="w-full mb-4 mt-4" onClick={handleStartEditProfile}>Edit Profile</Button>
+                
               </div>
 
               <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 border border-slate-100">

@@ -17,14 +17,13 @@ const memoryStorage = {
   }
 };
 
-// Create client using memory storage and working auth
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
-    storage: memoryStorage,   // ✔ no browser storage errors
-    persistSession: true,     // ✔ sessions work normally
-    autoRefreshToken: true,   // ✔ stays logged in
-    detectSessionInUrl: false
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
   }
 });
+
 
 

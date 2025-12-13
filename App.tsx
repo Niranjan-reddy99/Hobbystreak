@@ -534,6 +534,7 @@ export default function App() {
   const handleStartEditProfile = () => {
     setEditName(currentUser?.name || '');
     setEditAvatar(currentUser?.avatar || '');
+    console.log("Switching to EDIT_PROFILE");
     setView(ViewState.EDIT_PROFILE);
   };
 

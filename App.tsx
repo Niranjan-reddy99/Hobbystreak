@@ -1035,7 +1035,8 @@ export default function App() {
           {view === ViewState.SCHEDULE && (
             <div className="px-6 pt-4 h-full flex flex-col">
               <h1 className="text-xl font-bold mb-6">Schedule</h1>
-              <div className="flex justify-between items-center mb-6">
+              {/* Month Header */}
+<div className="flex justify-between items-center mb-6">
   <button
     onClick={() =>
       setCurrentMonth(
@@ -1073,15 +1074,53 @@ export default function App() {
     →
   </button>
 </div>
+
+{/* Full Month Calendar */}
 <div className="grid grid-cols-7 gap-2 mb-8">
   {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(day => (
     <div
       key={day}
-      className="text-center text-xs font-bold text-slate-400"
+      className="text-center text-xs font-semibold text-slate-400"
     >
       {day}
     </div>
   ))}
+
+  {getMonthDays(currentMonth).map(date => {
+    const dateStr = date.toLocaleDateString("en-CA"); // YYYY-MM-DD
+    const todayStr = new Date().toLocaleDateString("en-CA");
+
+    const isSelected = dateStr === selectedDate;
+    const isToday = dateStr === todayStr;
+    const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
+
+    const taskCount = tasks.filter(t => t.date === dateStr).length;
+
+    return (
+      <button
+        key={dateStr}
+        onClick={() => setSelectedDate(dateStr)}
+        className={`relative h-12 rounded-xl flex flex-col items-center justify-center text-sm transition-all
+          ${isSelected ? "bg-slate-900 text-white shadow-md" : "bg-white border"}
+          ${!isCurrentMonth ? "opacity-30" : ""}
+        `}
+      >
+        <span className="font-bold">{date.getDate()}</span>
+
+        {taskCount > 0 && (
+          <span className="absolute bottom-1 w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+        )}
+
+        {isToday && !isSelected && (
+          <span className="absolute top-1 w-1.5 h-1.5 bg-red-500 rounded-full" />
+        )}
+      </button>
+    );
+  })}
+</div>
+
+              <div className="flex justify-between items-center mb-6">
+  
 
   {getMonthDays(currentMonth).map((date, idx) => {
     const dateStr = date.toISOString().split("T")[0];

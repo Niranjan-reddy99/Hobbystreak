@@ -1122,24 +1122,32 @@ export default function App() {
         </div>
 
         {/* BOTTOM NAVIGATION */}
-        <div
+<div
   className={`absolute bottom-6 left-6 right-6 transition-opacity ${
     showBottomNav
       ? 'opacity-100 pointer-events-auto'
       : 'opacity-0 pointer-events-none'
   }`}
 >
+  <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
+    <button onClick={() => setView(ViewState.FEED)}>
+      <Home className="w-6 h-6" />
+    </button>
+    <button onClick={() => setView(ViewState.EXPLORE)}>
+      <Compass className="w-6 h-6" />
+    </button>
+    <button
+      onClick={() => setView(ViewState.CREATE_POST)}
+      className="bg-slate-900 text-white p-3 rounded-full shadow-lg -mt-8 border-4 border-slate-50"
+    >
+      <Plus className="w-6 h-6" />
+    </button>
+    <button onClick={() => setView(ViewState.PROFILE)}>
+      <UserIcon className="w-6 h-6" />
+    </button>
+    <button onClick={() => setView(ViewState.SCHEDULE)}>
+      <Calendar className="w-6 h-6" />
+    </button>
+  </div>
+</div>
 
-            <div className="bg-white/90 backdrop-blur-md shadow-2xl rounded-full px-6 py-4 flex items-center justify-between border border-white/50">
-              <button onClick={() => setView(ViewState.FEED)} className={view === ViewState.FEED ? 'text-slate-900' : 'text-slate-300'} aria-label="Feed"><Home className="w-6 h-6" /></button>
-              <button onClick={() => setView(ViewState.EXPLORE)} className={view === ViewState.EXPLORE ? 'text-slate-900' : 'text-slate-300'} aria-label="Explore"><Compass className="w-6 h-6" /></button>
-              <button onClick={() => setView(ViewState.CREATE_POST)} className="bg-slate-900 text-white p-3 rounded-full shadow-lg -mt-8 border-4 border-slate-50" aria-label="New Post"><Plus className="w-6 h-6" /></button>
-              <button onClick={() => setView(ViewState.PROFILE)} className={view === ViewState.PROFILE ? 'text-slate-900' : 'text-slate-300'} aria-label="Profile"><UserIcon className="w-6 h-6" /></button>
-              <button onClick={() => setView(ViewState.SCHEDULE)} className={view === ViewState.SCHEDULE ? 'text-slate-900' : 'text-slate-300'} aria-label="Schedule"><Calendar className="w-6 h-6" /></button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

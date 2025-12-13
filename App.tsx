@@ -579,9 +579,11 @@ export default function App() {
     try {
       const { error } = await supabase.from('comments').insert({ post_id: postId, user_id: currentUser.id, content });
       if (error) {
-        showToast('Failed to comment', 'error');
-        await fetchHobbiesAndPosts(currentUser.id);
-      }
+  console.error("COMMENT ERROR 👉", error);
+  showToast(error.message, 'error');
+  return;
+}
+
     } catch (err) {
       console.error('comment error', err);
       await fetchHobbiesAndPosts(currentUser.id);

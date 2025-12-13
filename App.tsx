@@ -36,7 +36,7 @@ const supabase = (supabaseUrl && supabaseKey)
 // ==========================================
 // TYPES & ENUMS
 // ==========================================
-enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS, NOTIFICATIONS, EDIT_PROFILE }
+enum ViewState { LOGIN, REGISTER, ONBOARDING, FEED, EXPLORE, PROFILE, SCHEDULE, CREATE_HOBBY, CREATE_POST, COMMUNITY_DETAILS, NOTIFICATIONS }
 enum HobbyCategory { ALL = 'All', FITNESS = 'Fitness', CREATIVE = 'Creative', TECH = 'Tech', LIFESTYLE = 'Lifestyle' }
 
 interface User {
@@ -145,9 +145,6 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  // edit profile states
-  const [editName, setEditName] = useState('');
-  const [editAvatar, setEditAvatar] = useState('');
 
   const [selectedCategory, setSelectedCategory] = useState<HobbyCategory | string>(HobbyCategory.ALL);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -530,13 +527,7 @@ export default function App() {
     }
   };
 
-  // EDIT PROFILE
-  const handleStartEditProfile = () => {
-    setEditName(currentUser?.name || '');
-    setEditAvatar(currentUser?.avatar || '');
-    console.log("Switching to EDIT_PROFILE");
-    setView(ViewState.EDIT_PROFILE);
-  };
+
 
   const handleSaveProfile = async () => {
     if (!supabase || !currentUser) return showToast('Login required', 'error');
@@ -585,8 +576,7 @@ export default function App() {
   ViewState.LOGIN,
   ViewState.REGISTER,
   ViewState.ONBOARDING,
-  ViewState.COMMUNITY_DETAILS,
-  ViewState.EDIT_PROFILE
+  ViewState.COMMUNITY_DETAILS
 ].includes(view);
 
 
@@ -1004,27 +994,7 @@ export default function App() {
             </div>
           )}
 
-          {/* EDIT PROFILE */}
-          {view === ViewState.EDIT_PROFILE && (
-            <div className="absolute inset-0 z-50 bg-white p-6 pt-12">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold">Edit Profile</h2>
-                <button onClick={() => setView(ViewState.PROFILE)}><X className="w-6 h-6" /></button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase">Display Name</label>
-                  <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl mt-1 outline-none" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase">Avatar URL</label>
-                  <input value={editAvatar} onChange={(e) => setEditAvatar(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl mt-1 outline-none" />
-                </div>
-                <Button className="w-full" onClick={handleSaveProfile}>Save</Button>
-              </div>
-            </div>
-          )}
-
+      
           {/* SCHEDULE */}
           {view === ViewState.SCHEDULE && (
             <div className="px-6 pt-4 h-full flex flex-col">

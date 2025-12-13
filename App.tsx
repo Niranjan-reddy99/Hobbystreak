@@ -527,28 +527,6 @@ export default function App() {
     }
   };
 
-
-
-  const handleSaveProfile = async () => {
-    if (!supabase || !currentUser) return showToast('Login required', 'error');
-    try {
-      await supabase.from('profiles').upsert({
-        id: currentUser.id,
-        name: editName,
-        email: currentUser.email,
-        avatar: editAvatar,
-        stats: currentUser.stats
-      }).catch(() => {});
-      setCurrentUser(prev => prev ? { ...prev, name: editName, avatar: editAvatar } : prev);
-      await fetchHobbiesAndPosts(currentUser.id);
-      showToast('Profile updated');
-      setView(ViewState.PROFILE);
-    } catch (err) {
-      console.error('save profile error', err);
-      showToast('Update failed', 'error');
-    }
-  };
-
   // Notifications: mark read
   const markNotificationAsRead = async (id: string) => {
     if (!supabase || !currentUser) return;
